@@ -8,6 +8,7 @@ import { EmergencyConfirm } from './components/EmergencyConfirm';
 import { FindBar } from './components/FindBar';
 import { DownloadTray } from './components/DownloadTray';
 import { ContextMenuHost } from './components/ContextMenuHost';
+import { BrandMark } from './components/BrandMark';
 import { useTabStore, useSettingsStore, useDownloadStore, useFindStore, useUIStore } from './stores';
 
 function useChromeReporter(
@@ -205,7 +206,19 @@ export function App(): React.ReactElement {
     };
   }, []);
 
-  if (!ready) return <div className="welcome-hint">Loading Null…</div>;
+  if (!ready) {
+    return (
+      <div className="splash" role="status" aria-label="Loading Null">
+        <div className="splash-card">
+          <BrandMark size={72} />
+          <span className="splash-name">NULL</span>
+          <span className="splash-bar" aria-hidden>
+            <i />
+          </span>
+        </div>
+      </div>
+    );
+  }
 
   const layout = settings.tabLayout;
   const narrow = typeof window !== 'undefined' && window.innerWidth < 760;

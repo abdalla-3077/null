@@ -1,6 +1,7 @@
 export type TabLayout = 'top' | 'side' | 'bottom';
 export type ThemeName = 'blue' | 'red' | 'neutral';
 export type AppearanceMode = 'light' | 'dark';
+export type WallpaperId = 'none' | 'coastal-dusk' | 'alpine-fog' | 'desert-night' | 'forest-canopy' | 'arctic-glow' | 'city-rain';
 export type SearchEngineId = 'google' | 'bing' | 'duckduckgo';
 export type DeviceProfileId =
   | 'windows'
@@ -70,6 +71,7 @@ export interface AppSettings {
   searchEngine: SearchEngineId;
   deviceProfile: DeviceProfileId;
   homepage: string;
+  newTabWallpaper: WallpaperId;
   newTabShowAI: boolean;
   aiProviders: AIProvider[];
   aiPanelWidth: number;
@@ -94,11 +96,12 @@ export const DEFAULT_AI_PROVIDERS: AIProvider[] = [
 export const DEFAULT_SETTINGS: AppSettings = {
   setupDone: false,
   tabLayout: 'top',
-  theme: 'blue',
+  theme: 'neutral',
   appearance: 'dark',
   searchEngine: 'google',
   deviceProfile: 'linux',
   homepage: 'null://newtab',
+  newTabWallpaper: 'coastal-dusk',
   newTabShowAI: true,
   aiProviders: DEFAULT_AI_PROVIDERS,
   aiPanelWidth: 360,

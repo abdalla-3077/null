@@ -26,6 +26,7 @@ import {
   navigateTab,
   openExternal,
   reloadTab,
+  refreshNewTabPages,
   reorderTabs,
   reopenClosedTab,
   setActiveTab,
@@ -53,6 +54,7 @@ import { setDownloadAttacher } from '../tab-manager';
 import { setAiDownloadAttacher } from '../ai-panel-manager';
 import { attachDownloadHandler } from '../download-manager';
 import { getAllSettings, getSetting, setSetting } from '../settings-store';
+import { writeInternalPages } from '../null-protocol';
 import { DEVICE_PROFILES, isValidHttpUrl } from '../../shared/config';
 import type { AppSettings } from '../../shared/types';
 
@@ -81,8 +83,19 @@ export function registerIpc(preloadPath: string): void {
     if (key === 'emergencyCustomUrl' && typeof value === 'string' && value.trim() !== '') {
       if (!isValidHttpUrl(value.trim())) throw new Error('Invalid URL');
     }
+    if (key === 'newTabWallpaper' && !['none', 'coastal-dusk', 'alpine-fog', 'desert-night', 'forest-canopy', 'arctic-glow', 'city-rain'].includes(String(value))) {
+      throw new Error('Invalid wallpaper');
+    }
     setSetting(key, value as never);
     broadcast('settings:changed', getAllSettings());
+    if (key === 'theme' || key === 'appearance' || key === 'aiProviders' || key === 'newTabShowAI' || key === 'newTabWallpaper' || key === 'searchEngine') {
+      try {
+        writeInternalPages();
+        refreshNewTabPages();
+      } catch {
+        /* ignore */
+      }
+    }
     if (key === 'deviceProfile') applyDeviceProfileToAllTabs();
     if (key === 'aiPanelOpen') {
       if (value) {

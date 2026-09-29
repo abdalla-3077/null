@@ -1,5 +1,6 @@
 import React from 'react';
 import type { TabInfo } from '../../shared/types';
+import { Icon } from './icons';
 
 function Favicon({ tab }: { tab: TabInfo }): React.ReactElement {
   if (tab.loading) return <span className="spin" aria-hidden />;
@@ -10,7 +11,11 @@ function Favicon({ tab }: { tab: TabInfo }): React.ReactElement {
       </span>
     );
   }
-  return <span className="fav">○</span>;
+  return (
+    <span className="fav fav-fallback" aria-hidden>
+      <Icon name="globe" size={13} />
+    </span>
+  );
 }
 
 export function TabItem({
@@ -56,7 +61,7 @@ export function TabItem({
             onMute();
           }}
         >
-          {tab.muted ? '✕♪' : '♪'}
+          <Icon name={tab.muted ? 'volumeX' : 'volume'} size={12} />
         </button>
       )}
       {!tab.pinned && (
@@ -69,7 +74,7 @@ export function TabItem({
             onClose();
           }}
         >
-          ×
+          <Icon name="close" size={12} />
         </button>
       )}
       <span style={{ display: 'none' }}>

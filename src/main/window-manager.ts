@@ -1,4 +1,6 @@
-import { BrowserWindow, screen } from 'electron';
+import { BrowserWindow, app, screen } from 'electron';
+import fs from 'node:fs';
+import path from 'node:path';
 import { getSetting } from './settings-store';
 
 let mainWindow: BrowserWindow | null = null;
@@ -62,6 +64,22 @@ export function relayout(): void {
   if (onLayoutChange) onLayoutChange();
 }
 
+export function resolveAppIcon(): string | undefined {
+  const candidates = [
+    path.join(process.resourcesPath, 'icon.png'),
+    path.join(app.getAppPath(), 'assets', 'icon.png'),
+    path.join(__dirname, '..', '..', 'assets', 'icon.png'),
+  ];
+  for (const p of candidates) {
+    try {
+      if (fs.existsSync(p)) return p;
+    } catch {
+      /* ignore */
+    }
+  }
+  return undefined;
+}
+
 export function createMainWindow(preloadPath: string): BrowserWindow {
   const { width } = screen.getPrimaryDisplay().workAreaSize;
   mainWindow = new BrowserWindow({
@@ -72,6 +90,7 @@ export function createMainWindow(preloadPath: string): BrowserWindow {
     autoHideMenuBar: true,
     title: 'Null',
     backgroundColor: '#101014',
+    icon: resolveAppIcon(),
     webPreferences: {
       preload: preloadPath,
       contextIsolation: true,

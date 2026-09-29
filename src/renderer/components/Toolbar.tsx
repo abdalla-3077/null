@@ -1,5 +1,6 @@
 import React from 'react';
 import { useTabStore, useSettingsStore, useDownloadStore, useUIStore } from '../stores';
+import { Icon } from './icons';
 
 function NavButtons(): React.ReactElement {
   const tabs = useTabStore((s) => s.tabs);
@@ -8,14 +9,24 @@ function NavButtons(): React.ReactElement {
   const b = window.nullBrowser;
   return (
     <>
-      <button className="icon-btn" title="Back" aria-label="Go back" disabled={!active?.canGoBack} onClick={() => activeId && b.goBack(activeId)}>←</button>
-      <button className="icon-btn" title="Forward" aria-label="Go forward" disabled={!active?.canGoForward} onClick={() => activeId && b.goForward(activeId)}>→</button>
+      <button className="icon-btn" title="Back" aria-label="Go back" disabled={!active?.canGoBack} onClick={() => activeId && b.goBack(activeId)}>
+        <Icon name="back" />
+      </button>
+      <button className="icon-btn" title="Forward" aria-label="Go forward" disabled={!active?.canGoForward} onClick={() => activeId && b.goForward(activeId)}>
+        <Icon name="forward" />
+      </button>
       {active?.loading ? (
-        <button className="icon-btn" title="Stop" aria-label="Stop loading" onClick={() => activeId && b.stop(activeId)}>✕</button>
+        <button className="icon-btn spin-btn" title="Stop" aria-label="Stop loading" onClick={() => activeId && b.stop(activeId)}>
+          <Icon name="close" />
+        </button>
       ) : (
-        <button className="icon-btn" title="Reload" aria-label="Reload page" onClick={() => activeId && b.reload(activeId)}>↻</button>
+        <button className="icon-btn" title="Reload" aria-label="Reload page" onClick={() => activeId && b.reload(activeId)}>
+          <Icon name="reload" />
+        </button>
       )}
-      <button className="icon-btn" title="Home" aria-label="Go home" onClick={() => activeId && b.goHome(activeId)}>⌂</button>
+      <button className="icon-btn" title="Home" aria-label="Go home" onClick={() => activeId && b.goHome(activeId)}>
+        <Icon name="home" />
+      </button>
     </>
   );
 }
@@ -56,11 +67,13 @@ export function Toolbar({ addressRef }: { addressRef: React.RefObject<HTMLInputE
   return (
     <div className="toolbar">
       <NavButtons />
-      <button className="icon-btn" title="New tab (Ctrl+T)" aria-label="New tab" onClick={() => void b.createTab()}>+</button>
+      <button className="icon-btn" title="New tab (Ctrl+T)" aria-label="New tab" onClick={() => void b.createTab()}>
+        <Icon name="plus" />
+      </button>
       <AiRail />
       <div style={{ flex: 1 }} />
       <button
-        className="icon-btn"
+        className="icon-btn dl-btn"
         title={`Downloads${activeCount > 0 ? ` (${activeCount} active)` : ''}`}
         aria-label="Show downloads"
         onClick={() => {
@@ -68,9 +81,12 @@ export function Toolbar({ addressRef }: { addressRef: React.RefObject<HTMLInputE
           setDl(!dlOpen);
         }}
       >
-        ↓{activeCount > 0 ? ` ${activeCount}` : ''}
+        <Icon name="download" />
+        {activeCount > 0 && <span className="dl-badge">{activeCount}</span>}
       </button>
-      <button className="icon-btn" title="Settings" aria-label="Open settings" onClick={() => setUI({ settingsOpen: true })}>⚙</button>
+      <button className="icon-btn" title="Settings" aria-label="Open settings" onClick={() => setUI({ settingsOpen: true })}>
+        <Icon name="settings" />
+      </button>
       <button
         className="icon-btn danger"
         title="Emergency mode"
@@ -80,7 +96,7 @@ export function Toolbar({ addressRef }: { addressRef: React.RefObject<HTMLInputE
           else void b.emergency();
         }}
       >
-        ⚠
+        <Icon name="alert" />
       </button>
       <span style={{ display: 'none' }}>{tabs.length}</span>
     </div>

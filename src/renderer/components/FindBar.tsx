@@ -1,5 +1,6 @@
 import React from 'react';
 import { useFindStore, useTabStore } from '../stores';
+import { Icon } from './icons';
 
 export function FindBar(): React.ReactElement {
   const open = useFindStore((s) => s.open);
@@ -41,9 +42,15 @@ export function FindBar(): React.ReactElement {
       <span className="count" aria-live="polite">
         {result && result.matches > 0 ? `${result.activeMatchOrdinal}/${result.matches}` : result ? '0/0' : ''}
       </span>
-      <button className="icon-btn" title="Previous" aria-label="Previous match" onClick={() => search(query, false)}>↑</button>
-      <button className="icon-btn" title="Next" aria-label="Next match" onClick={() => search(query, true)}>↓</button>
-      <button className="icon-btn" title="Close" aria-label="Close find" onClick={close}>×</button>
+      <button className="icon-btn" title="Previous (Shift+Enter)" aria-label="Previous match" onClick={() => search(query, false)}>
+        <Icon name="chevronUp" size={14} />
+      </button>
+      <button className="icon-btn" title="Next (Enter)" aria-label="Next match" onClick={() => search(query, true)}>
+        <Icon name="chevronDown" size={14} />
+      </button>
+      <button className="icon-btn" title="Close (Esc)" aria-label="Close find" onClick={close}>
+        <Icon name="close" size={14} />
+      </button>
     </div>
   );
 }

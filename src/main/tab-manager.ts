@@ -1,10 +1,10 @@
 import { WebContentsView, session, shell } from 'electron';
 import { randomUUID } from 'node:crypto';
 import { getMainWindow, getContentBounds, isModalOpen } from './window-manager';
-import { getSetting } from './settings-store';
+import { getAllSettings, getSetting, setSetting } from './settings-store';
 import { DEVICE_PROFILES, NULL_NEWTAB, resolveInputToUrl } from '../shared/config';
 import { getNewtabUrl, writeInternalPages } from './null-protocol';
-import type { TabInfo } from '../shared/types';
+import type { SearchEngineId, TabInfo } from '../shared/types';
 
 interface TabRecord {
   id: string;
@@ -131,6 +131,11 @@ function attachViewEvents(record: TabRecord): void {
     broadcastTabs();
   });
   wc.on('will-navigate', (e, url) => {
+    if (url.startsWith('null://cycle-engine')) {
+      e.preventDefault();
+      cycleSearchEngine();
+      return;
+    }
     if (url.startsWith('null://go')) {
       e.preventDefault();
       const u = new URL(url);
@@ -321,6 +326,21 @@ export function reloadTab(id: string, hard = false): void {
   else wc.reload();
 }
 
+export function refreshNewTabPages(): void {
+  const newtabUrl = getNewtabUrl();
+  for (const record of tabs.values()) {
+    let currentUrl = '';
+    try {
+      currentUrl = record.view.webContents.getURL();
+    } catch {
+      continue;
+    }
+    if (currentUrl === newtabUrl) {
+      void record.view.webContents.loadURL(newtabUrl).catch(() => undefined);
+    }
+  }
+}
+
 export function stopTab(id: string): void {
   tabs.get(id)?.view.webContents.stop();
 }
@@ -329,6 +349,37 @@ export function goHome(id: string): void {
   const record = tabs.get(id);
   if (!record) return;
   void record.view.webContents.loadURL(getSetting('homepage')).catch(() => undefined);
+}
+
+const ENGINE_ORDER: SearchEngineId[] = ['google', 'bing', 'duckduckgo'];
+
+export function cycleSearchEngine(): SearchEngineId {
+  const cur = getSetting('searchEngine');
+  const next = ENGINE_ORDER[(ENGINE_ORDER.indexOf(cur) + 1) % ENGINE_ORDER.length];
+  setSetting('searchEngine', next);
+  try {
+    writeInternalPages();
+  } catch {
+    /* ignore */
+  }
+  emit('settings:changed', getAllSettings());
+  try {
+    const newtabUrl = getNewtabUrl();
+    for (const r of tabs.values()) {
+      let live = '';
+      try {
+        live = r.view.webContents.getURL();
+      } catch {
+        /* ignore */
+      }
+      if (r.url === NULL_NEWTAB || (live.startsWith('file://') && live.includes('null-pages'))) {
+        void r.view.webContents.loadURL(newtabUrl).catch(() => undefined);
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  return next;
 }
 
 export function duplicateTab(id: string): void {
