@@ -1,11 +1,13 @@
 import React, { useEffect, useRef } from 'react';
 import { useTabStore } from '../stores';
+import { Icon } from './icons';
 
 export function AddressBar({ addressRef }: { addressRef: React.RefObject<HTMLInputElement | null> }): React.ReactElement {
   const tabs = useTabStore((s) => s.tabs);
   const activeId = useTabStore((s) => s.activeId);
   const active = tabs.find((t) => t.id === activeId);
   const [value, setValue] = React.useState('');
+  const [focused, setFocused] = React.useState(false);
   const localRef = useRef<HTMLInputElement>(null);
   const ref = addressRef ?? localRef;
 
@@ -25,14 +27,20 @@ export function AddressBar({ addressRef }: { addressRef: React.RefObject<HTMLInp
     (ref.current ?? localRef.current)?.blur();
   };
 
+  const isSecure = !!active?.url && /^(https|null):/i.test(active.url);
+  const showValue = focused || !active || active.url === 'null://newtab' || !active.title;
+
   return (
     <div className="address-wrap">
+      <span className="address-affix" aria-hidden>
+        <Icon name={isSecure ? 'lock' : 'search'} size={14} />
+      </span>
       <input
         ref={ref as React.RefObject<HTMLInputElement>}
-        className="address"
+        className={`address${focused ? ' focused' : ''}`}
         aria-label="Address bar"
-        placeholder="Search or enter address"
-        value={value}
+        placeholder={active && active.url !== 'null://newtab' ? active.url : 'Search or enter address'}
+        value={showValue ? value : (active?.title ?? value)}
         spellCheck={false}
         autoComplete="off"
         onChange={(e) => setValue(e.target.value)}
@@ -44,7 +52,19 @@ export function AddressBar({ addressRef }: { addressRef: React.RefObject<HTMLInp
             if (activeId) void window.nullBrowser.stop(activeId);
           }
         }}
-        onFocus={(e) => e.target.select()}
+        onFocus={(e) => {
+          setFocused(true);
+          setValue(active?.url === 'null://newtab' ? '' : (active?.url ?? ''));
+          e.target.select();
+        }}
+        onBlur={() => setFocused(false)}
+        onMouseDown={(e) => {
+          if (document.activeElement !== e.currentTarget) {
+            e.preventDefault();
+            e.currentTarget.focus();
+            e.currentTarget.select();
+          }
+        }}
         onPaste={(e) => {
           const text = e.clipboardData.getData('text');
           if ((e.nativeEvent as unknown as { shiftKey?: boolean }).shiftKey && text && activeId) {

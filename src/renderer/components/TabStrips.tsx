@@ -1,5 +1,6 @@
 import React from 'react';
 import { TabItem } from './TabItem';
+import { Icon } from './icons';
 import { useTabStore } from '../stores';
 
 function useTabActions(): {
@@ -35,7 +36,9 @@ export function TopStrip(): React.ReactElement {
       {tabs.map((t) => (
         <TabItem key={t.id} tab={t} onActivate={() => a.activate(t.id)} onClose={() => a.close(t.id)} onMute={() => a.mute(t.id, t.muted)} onReorder={(d) => a.move(t.id, d)} />
       ))}
-      <button className="icon-btn newtab-inline" title="New tab (Ctrl+T)" aria-label="New tab" onClick={() => void b.createTab()}>+</button>
+      <button className="icon-btn newtab-inline" title="New tab (Ctrl+T)" aria-label="New tab" onClick={() => void b.createTab()}>
+        <Icon name="plus" size={14} />
+      </button>
     </div>
   );
 }
@@ -49,7 +52,9 @@ export function BottomStrip(): React.ReactElement {
       {tabs.map((t) => (
         <TabItem key={t.id} tab={t} onActivate={() => a.activate(t.id)} onClose={() => a.close(t.id)} onMute={() => a.mute(t.id, t.muted)} onReorder={(d) => a.move(t.id, d)} />
       ))}
-      <button className="icon-btn newtab-inline" title="New tab (Ctrl+T)" aria-label="New tab" onClick={() => void b.createTab()}>+</button>
+      <button className="icon-btn newtab-inline" title="New tab (Ctrl+T)" aria-label="New tab" onClick={() => void b.createTab()}>
+        <Icon name="plus" size={14} />
+      </button>
     </div>
   );
 }
@@ -64,7 +69,9 @@ export function SideStrip({ collapsed }: { collapsed: boolean }): React.ReactEle
       {tabs.map((t) => (
         <TabItem key={t.id} tab={t} onActivate={() => a.activate(t.id)} onClose={() => a.close(t.id)} onMute={() => a.mute(t.id, t.muted)} onReorder={(d) => a.move(t.id, d)} />
       ))}
-      <button className="btn newtab-btn" onClick={() => void b.createTab()}>+ New tab</button>
+      <button className="btn newtab-btn" onClick={() => void b.createTab()}>
+        <Icon name="plus" size={14} /> New tab
+      </button>
     </div>
   );
 }

@@ -2,7 +2,7 @@
   "name": "null",
   "productName": "null",
   "version": "1.0.0",
-  "description": "My Electron application description",
+  "description": "Null — a privacy-focused desktop browser that forgets everything when it closes",
   "main": ".vite/build/main.js",
   "private": true,
   "scripts": {

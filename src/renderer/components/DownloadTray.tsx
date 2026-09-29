@@ -1,5 +1,6 @@
 import React from 'react';
 import { useDownloadStore } from '../stores';
+import { Icon } from './icons';
 
 export function DownloadTray(): React.ReactElement {
   const downloads = useDownloadStore((s) => s.downloads);
@@ -15,24 +16,35 @@ export function DownloadTray(): React.ReactElement {
     <div className="dl-tray" role="dialog" aria-label="Downloads">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h4>Downloads{active > 0 ? ` (${active} active)` : ''}</h4>
-        <button className="icon-btn" aria-label="Close downloads" onClick={() => setOpen(false)}>×</button>
+        <button className="icon-btn" aria-label="Close downloads" onClick={() => setOpen(false)}>
+          <Icon name="close" size={14} />
+        </button>
       </div>
-      {downloads.length === 0 && <p style={{ color: 'var(--muted)', fontSize: 12 }}>No downloads yet.</p>}
+      {downloads.length === 0 && (
+        <div className="dl-empty">
+          <Icon name="download" size={22} />
+          <span>No downloads yet.</span>
+        </div>
+      )}
       {downloads.slice().reverse().map((d) => {
         const pct = d.totalBytes > 0 ? Math.min(100, Math.round((d.receivedBytes / d.totalBytes) * 100)) : 0;
         return (
           <div className="dl-item" key={d.id}>
             <div>{d.filename}</div>
             <div style={{ color: 'var(--muted)', fontSize: 11 }}>
-              {d.state === 'progressing' ? `${pct}%` : d.state}
+              {d.state === 'progressing' ? `${pct}% · downloading` : d.state === 'completed' ? 'Done' : d.state}
             </div>
             {d.state === 'progressing' && (
               <div className="bar"><i style={{ width: `${pct}%` }} /></div>
             )}
             {d.state === 'completed' && (
-              <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
-                <button className="btn" onClick={() => void b.downloadOpen(d.savePath)}>Open</button>
-                <button className="btn" onClick={() => void b.downloadReveal(d.savePath)}>Show in folder</button>
+              <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+                <button className="btn" onClick={() => void b.downloadOpen(d.savePath)}>
+                  <Icon name="external" size={13} /> Open
+                </button>
+                <button className="btn" onClick={() => void b.downloadReveal(d.savePath)}>
+                  <Icon name="folder" size={13} /> Show in folder
+                </button>
               </div>
             )}
           </div>
