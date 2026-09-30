@@ -1,3 +1,5 @@
+import type { SensitiveCategory } from './sensitive-sites';
+
 export type TabLayout = 'top' | 'side' | 'bottom';
 export type ThemeName = 'blue' | 'red' | 'neutral';
 export type AppearanceMode = 'light' | 'dark';
@@ -24,7 +26,83 @@ export interface TabInfo {
   audible: boolean;
   muted: boolean;
   pinned: boolean;
+  certError: boolean;
   active: boolean;
+}
+
+export type TabSecurity = 'secure' | 'insecure' | 'warning' | 'internal' | 'unknown';
+
+export interface PageMetaTag {
+  label: string;
+  value: string;
+}
+
+export interface PageMetaCounts {
+  links: number;
+  images: number;
+  scripts: number;
+  stylesheets: number;
+  forms: number;
+  iframes: number;
+}
+
+export interface PageMeta {
+  title: string;
+  description: string;
+  canonical: string;
+  lang: string;
+  charset: string;
+  viewport: string;
+  robots: string;
+  author: string;
+  generator: string;
+  themeColor: string;
+  openGraph: PageMetaTag[];
+  twitter: PageMetaTag[];
+  other: PageMetaTag[];
+  counts: PageMetaCounts;
+  cookies: number;
+  localStorageKeys: number;
+  readyState: string;
+  contentType: string;
+}
+
+export interface TabDevInfo {
+  tabId: string;
+  url: string;
+  title: string;
+  host: string;
+  origin: string;
+  protocol: string;
+  security: TabSecurity;
+  userAgent: string;
+  deviceProfile: string;
+  processId: number | null;
+  loading: boolean;
+  canGoBack: boolean;
+  canGoForward: boolean;
+  devToolsOpen: boolean;
+  zoom: number;
+  muted: boolean;
+  meta: PageMeta | null;
+  metaError: string;
+  fetchedAt: number;
+}
+
+export type SiteResourceKind = 'robots' | 'sitemap';
+
+export interface SiteResourceResult {
+  kind: SiteResourceKind;
+  url: string;
+  ok: boolean;
+  status: number;
+  contentType: string;
+  bytes: number;
+  body: string;
+  truncated: boolean;
+  sitemapUrls: string[];
+  error: string;
+  fetchedAt: number;
 }
 
 export interface SearchEngine {
@@ -63,6 +141,28 @@ export interface FindResult {
   tabId: string;
 }
 
+export interface InsecureWarningInfo {
+  tabId: string;
+  url: string;
+}
+
+export interface CertificateWarningInfo {
+  tabId: string;
+  url: string;
+  host: string;
+  error: string;
+  issuer: string;
+}
+
+export type { SensitiveCategory };
+
+export interface SensitiveWarningInfo {
+  tabId: string;
+  url: string;
+  host: string;
+  category: SensitiveCategory;
+}
+
 export interface AppSettings {
   setupDone: boolean;
   tabLayout: TabLayout;
@@ -83,6 +183,12 @@ export interface AppSettings {
   downloadLocation: string;
   askWhereToSave: boolean;
   restoreClosedTabs: boolean;
+  warnOnInsecureHttp: boolean;
+  warnSensitiveSites: boolean;
+  warnPorn: boolean;
+  warnGambling: boolean;
+  warnAlcohol: boolean;
+  trustedSensitiveHosts: string[];
   devMode: boolean;
 }
 
@@ -113,5 +219,11 @@ export const DEFAULT_SETTINGS: AppSettings = {
   downloadLocation: '',
   askWhereToSave: true,
   restoreClosedTabs: true,
+  warnOnInsecureHttp: true,
+  warnSensitiveSites: true,
+  warnPorn: true,
+  warnGambling: true,
+  warnAlcohol: true,
+  trustedSensitiveHosts: [],
   devMode: false,
 };

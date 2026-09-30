@@ -1,5 +1,16 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { AppSettings, TabInfo, DownloadItem, FindResult } from './shared/types';
+import type {
+  AppSettings,
+  CertificateWarningInfo,
+  DownloadItem,
+  FindResult,
+  InsecureWarningInfo,
+  SensitiveWarningInfo,
+  SiteResourceKind,
+  SiteResourceResult,
+  TabDevInfo,
+  TabInfo,
+} from './shared/types';
 
 const browser = {
   createTab: (url?: string, activate?: boolean): Promise<string> =>
@@ -8,6 +19,12 @@ const browser = {
   activateTab: (id: string): Promise<void> => ipcRenderer.invoke('browser:activate-tab', id),
   navigate: (id: string, input: string): Promise<void> =>
     ipcRenderer.invoke('browser:navigate', id, input),
+  navigateConfirmed: (id: string, url: string): Promise<void> =>
+    ipcRenderer.invoke('browser:navigate-confirm', id, url),
+  sensitiveConfirm: (id: string, url: string, trustHost: boolean): Promise<void> =>
+    ipcRenderer.invoke('browser:sensitive-confirm', id, url, trustHost),
+  approveCertificate: (id: string, url: string): Promise<void> =>
+    ipcRenderer.invoke('browser:cert-approve', id, url),
   reload: (id: string, hard?: boolean): Promise<void> =>
     ipcRenderer.invoke('browser:reload', id, hard),
   stop: (id: string): Promise<void> => ipcRenderer.invoke('browser:stop', id),
@@ -22,6 +39,16 @@ const browser = {
   reorderTabs: (ids: string[]): Promise<void> => ipcRenderer.invoke('browser:reorder-tabs', ids),
   getTabs: (): Promise<{ tabs: TabInfo[]; activeId: string | null }> =>
     ipcRenderer.invoke('browser:get-tabs'),
+  devInfo: (id: string | null): Promise<TabDevInfo | null> =>
+    ipcRenderer.invoke('browser:dev-info', id),
+  devResource: (
+    id: string | null,
+    kind: SiteResourceKind,
+    url?: string,
+  ): Promise<SiteResourceResult | null> =>
+    ipcRenderer.invoke('browser:dev-resource', id, kind, url),
+  setDevToolsOpen: (id: string, open: boolean): Promise<void> =>
+    ipcRenderer.invoke('browser:dev-devtools', id, open),
   find: (id: string, q: string, fwd?: boolean, mc?: boolean): Promise<void> =>
     ipcRenderer.invoke('browser:find', id, q, fwd, mc),
   findStop: (id: string): Promise<void> => ipcRenderer.invoke('browser:find-stop', id),
@@ -59,6 +86,21 @@ const browser = {
     const fn = (_e: unknown, s: AppSettings) => cb(s);
     ipcRenderer.on('settings:changed', fn as never);
     return () => ipcRenderer.removeListener('settings:changed', fn as never);
+  },
+  onInsecureWarning: (cb: (w: InsecureWarningInfo) => void): (() => void) => {
+    const fn = (_e: unknown, w: InsecureWarningInfo) => cb(w);
+    ipcRenderer.on('browser:insecure-warning', fn as never);
+    return () => ipcRenderer.removeListener('browser:insecure-warning', fn as never);
+  },
+  onCertificateWarning: (cb: (w: CertificateWarningInfo) => void): (() => void) => {
+    const fn = (_e: unknown, w: CertificateWarningInfo) => cb(w);
+    ipcRenderer.on('browser:cert-warning', fn as never);
+    return () => ipcRenderer.removeListener('browser:cert-warning', fn as never);
+  },
+  onSensitiveWarning: (cb: (w: SensitiveWarningInfo) => void): (() => void) => {
+    const fn = (_e: unknown, w: SensitiveWarningInfo) => cb(w);
+    ipcRenderer.on('browser:sensitive-warning', fn as never);
+    return () => ipcRenderer.removeListener('browser:sensitive-warning', fn as never);
   },
   onDownloadsChanged: (cb: (d: DownloadItem[]) => void): (() => void) => {
     const fn = (_e: unknown, d: DownloadItem[]) => cb(d);

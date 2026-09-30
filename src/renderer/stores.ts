@@ -1,5 +1,13 @@
 import { create } from 'zustand';
-import type { TabInfo, AppSettings, DownloadItem, FindResult } from '../shared/types';
+import type {
+  TabInfo,
+  AppSettings,
+  CertificateWarningInfo,
+  DownloadItem,
+  FindResult,
+  InsecureWarningInfo,
+  SensitiveWarningInfo,
+} from '../shared/types';
 import { DEFAULT_SETTINGS } from '../shared/types';
 
 interface TabState {
@@ -61,6 +69,10 @@ export const useFindStore = create<FindState>((set) => ({
 interface UIState {
   settingsOpen: boolean;
   emergencyConfirmOpen: boolean;
+  devToolsOpen: boolean;
+  insecureWarning: InsecureWarningInfo | null;
+  certWarning: CertificateWarningInfo | null;
+  sensitiveWarning: SensitiveWarningInfo | null;
   ctxMenu: {
     x: number;
     y: number;
@@ -76,6 +88,10 @@ interface UIState {
 export const useUIStore = create<UIState>((set) => ({
   settingsOpen: false,
   emergencyConfirmOpen: false,
+  devToolsOpen: false,
+  insecureWarning: null,
+  certWarning: null,
+  sensitiveWarning: null,
   ctxMenu: null,
   set: (p) => set(p),
 }));

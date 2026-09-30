@@ -10,6 +10,11 @@ import { createMainWindow } from './main/window-manager';
 import { registerNullProtocol, writeInternalPages } from './main/null-protocol';
 import { registerIpc, setPreloadPath } from './main/ipc';
 import { cleanupOnQuit } from './main/privacy-manager';
+import { handleCertificateError } from './main/tab-manager';
+
+app.on('certificate-error', (event, webContents, url, error, certificate, callback, isMainFrame) => {
+  handleCertificateError(event, webContents, url, error, certificate, callback, isMainFrame);
+});
 
 if (started) {
   app.quit();

@@ -129,6 +129,18 @@ function currentEngine(): SearchEngineId {
   }
 }
 
+function shortcutModifier(): string {
+  return process.platform === 'darwin' ? '⌘' : 'Ctrl';
+}
+
+function greetingFor(d: Date): string {
+  const h = d.getHours();
+  if (h < 5) return 'Good night.';
+  if (h < 12) return 'Good morning.';
+  if (h < 18) return 'Good afternoon.';
+  return 'Good evening.';
+}
+
 export function newTabHtml(theme?: unknown, appearance?: unknown, opts?: NewTabOptions): string {
   const t = normalizeTheme(theme ?? currentTheme().theme);
   const a = (appearance ?? currentTheme().appearance) === 'light' ? 'light' : 'dark';
@@ -145,10 +157,18 @@ export function newTabHtml(theme?: unknown, appearance?: unknown, opts?: NewTabO
   const engine = currentEngine();
   const engineName = SEARCH_ENGINES[engine].name;
   const engineIcon = ENGINE_ICONS[engine];
+  const mod = shortcutModifier();
+  const greeting = greetingFor(new Date());
   const tiles = TILES.map(
     (tile) =>
       `<a class="site" href="null://go?to=${encodeURIComponent(tile.url)}" title="${escapeHtml(tile.name)} — ${escapeHtml(tile.url)}"><span class="site-icon"><img src="${tile.icon}" alt="" draggable="false" loading="eager"></span><span class="site-name">${escapeHtml(tile.name)}</span></a>`,
   ).join('');
+  const engineMenu = (Object.keys(SEARCH_ENGINES) as SearchEngineId[])
+    .map((id) => {
+      const active = id === engine;
+      return `<button type="button" role="option" data-id="${id}" aria-selected="${active}"><img src="${ENGINE_ICONS[id]}" alt=""><span class="nm">${escapeHtml(SEARCH_ENGINES[id].name)}</span><span class="tick" aria-hidden="true">✓</span></button>`;
+    })
+    .join('');
   const aiRow =
     o.showAI !== false && o.providers && o.providers.length > 0
       ? `<nav class="ai" aria-label="AI shortcuts">${o.providers
@@ -174,7 +194,7 @@ main{flex:1;display:flex;align-items:center;justify-content:flex-start;padding:8
 .greet{margin:0 0 8px;font-size:clamp(34px,4.2vw,54px);font-weight:600;letter-spacing:-.045em;line-height:1.06;color:${homeText};text-shadow:${wallpaperImage ? '0 2px 24px rgba(0,0,0,.2)' : 'none'}}
 .sub{margin:0 0 30px;font-size:14px;color:${homeMuted};line-height:1.5}
 form.search{display:flex;gap:10px;align-items:stretch}
-.inp{flex:1;min-width:0;display:flex;align-items:center;gap:4px;padding:0 7px;border:1px solid ${wallpaperImage ? 'rgba(255,255,255,.36)' : p.border};border-radius:14px;background:${homeSurface};backdrop-filter:blur(18px);box-shadow:0 12px 40px rgba(0,0,0,.18);transition:border-color .18s ease,box-shadow .18s ease}
+.inp{position:relative;z-index:5;flex:1;min-width:0;display:flex;align-items:center;gap:4px;padding:0 7px;border:1px solid ${wallpaperImage ? 'rgba(255,255,255,.36)' : p.border};border-radius:14px;background:${homeSurface};backdrop-filter:blur(18px);box-shadow:0 12px 40px rgba(0,0,0,.18);transition:border-color .18s ease,box-shadow .18s ease}
 .inp:focus-within{border-color:${homeFocus};box-shadow:0 0 0 3px ${wallpaperImage ? 'rgba(255,255,255,.2)' : p.accentSoft},0 12px 40px rgba(0,0,0,.18)}
 .eng{display:inline-flex;align-items:center;gap:7px;padding:9px;border:0;border-radius:8px;background:transparent;color:${homeMuted};font:inherit;font-size:12px;font-weight:600;cursor:pointer;flex:none}
 .eng:hover{background:${homeHover};color:${homeText}}
@@ -186,6 +206,23 @@ form.search{display:flex;gap:10px;align-items:stretch}
 .go:hover{background:${wallpaperImage ? '#e9edf4' : p.accentHover};transform:translateY(-1px)}
 .hints{margin:14px 0 0;font-size:12px;color:${homeMuted}}
 .hints kbd{border:1px solid ${wallpaperImage ? 'rgba(255,255,255,.26)' : p.border};border-radius:5px;padding:1px 6px;font:inherit;font-size:11px;background:${wallpaperImage ? 'rgba(10,14,22,.38)' : p.surface};color:${homeText}}
+.engwrap{position:relative;flex:none}
+.eng[aria-expanded=true]{background:${homeHover};color:${homeText}}
+.eng .caret{transition:transform .15s ease}
+.eng[aria-expanded=true] .caret{transform:rotate(180deg)}
+.engmenu{position:absolute;top:calc(100% + 10px);left:0;z-index:20;min-width:212px;padding:6px;border:1px solid ${homeBorder};border-radius:14px;background:${wallpaperImage ? 'rgba(14,18,28,.92)' : p.surface};backdrop-filter:blur(20px);box-shadow:0 20px 48px rgba(0,0,0,.34)}
+.engmenu[hidden]{display:none}
+.engmenu [role=option]{display:flex;align-items:center;gap:10px;width:100%;padding:9px 10px;border:0;border-radius:9px;background:transparent;color:${homeText};font:inherit;font-size:13px;font-weight:600;cursor:pointer;text-align:left}
+.engmenu [role=option]:hover,.engmenu [role=option]:focus-visible{background:${homeHover}}
+.engmenu [role=option] img{width:16px;height:16px;border-radius:50%;background:#fff;display:block;flex:none}
+.engmenu .nm{flex:1}
+.engmenu .tick{opacity:0;font-size:12px;color:${homeFocus}}
+.engmenu [aria-selected=true] .tick{opacity:.9}
+.clear{flex:none;display:flex;align-items:center;justify-content:center;width:26px;height:26px;margin-right:2px;border:0;border-radius:50%;background:transparent;color:${homeMuted};font:inherit;font-size:14px;line-height:1;cursor:pointer}
+.clear:hover{background:${homeHover};color:${homeText}}
+.clear[hidden]{display:none}
+@keyframes null-nudge{0%,100%{transform:translateX(0)}20%{transform:translateX(-3px)}40%{transform:translateX(3px)}60%{transform:translateX(-2px)}80%{transform:translateX(2px)}}
+.inp.nudge{border-color:${homeFocus};animation:null-nudge .34s ease}
 .ai{display:flex;flex-wrap:wrap;gap:8px;margin:24px 0 0}
 .ai a{padding:7px 13px;border:1px solid ${homeBorder};border-radius:999px;background:${wallpaperImage ? 'rgba(10,14,22,.28)' : p.surface};backdrop-filter:blur(10px);color:${homeText};text-decoration:none;font-size:12px;font-weight:600;transition:background .15s ease,border-color .15s ease}
 .ai a:hover{background:${homeHover};border-color:${wallpaperImage ? 'rgba(255,255,255,.65)' : p.borderStrong}}
@@ -203,18 +240,32 @@ form.search{display:flex;gap:10px;align-items:stretch}
 </style></head><body>
 <header class="bar"><span class="lockup"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><line x1="18.5" y1="5.5" x2="5.5" y2="18.5" stroke-linecap="round"/></g></svg>NULL</span><span class="clock"><b id="clock">--:--</b><span id="date"></span></span></header>
 <main><div class="col">
-<p class="greet" id="greet">Good evening.</p>
+<h1 class="greet" id="greet">${greeting}</h1>
 <p class="sub">This window forgets everything when it closes.</p>
-<form class="search" id="f"><div class="inp"><button type="button" class="eng" id="eng" aria-label="Current search engine: ${engineName}. Activate to switch."><img id="engIcon" src="${engineIcon}" alt=""><span id="engName">${engineName}</span><span class="caret" aria-hidden="true">▾</span></button><input id="q" placeholder="Search ${engineName} or enter address" autocomplete="off" spellcheck="false" aria-label="Search ${engineName} or enter address"></div><button class="go" type="submit">Go</button></form>
-<p class="hints"><kbd>Ctrl</kbd> + <kbd>L</kbd> address &nbsp;&middot;&nbsp; <kbd>Ctrl</kbd> + <kbd>T</kbd> new tab &nbsp;&middot;&nbsp; <kbd>Ctrl</kbd> + <kbd>F</kbd> find</p>
+<form class="search" id="f"><div class="inp"><div class="engwrap"><button type="button" class="eng" id="eng" aria-haspopup="listbox" aria-expanded="false" aria-label="Search engine: ${engineName}. Opens engine menu."><img id="engIcon" src="${engineIcon}" alt=""><span id="engName">${engineName}</span><span class="caret" aria-hidden="true">▾</span></button><div class="engmenu" id="engMenu" role="listbox" aria-label="Choose search engine" hidden>${engineMenu}</div></div><input id="q" placeholder="Search ${engineName} or enter address" autocomplete="off" spellcheck="false" enterkeyhint="go" aria-label="Search ${engineName} or enter address"><button type="button" class="clear" id="clear" aria-label="Clear search" hidden>✕</button></div><button class="go" type="submit">Go</button></form>
+<p class="hints"><kbd>${mod}</kbd> + <kbd>L</kbd> address &nbsp;&middot;&nbsp; <kbd>${mod}</kbd> + <kbd>T</kbd> new tab &nbsp;&middot;&nbsp; <kbd>${mod}</kbd> + <kbd>F</kbd> find</p>
 ${aiRow}
 <nav class="sites" aria-label="Quick links">${tiles}</nav>
 </div></main>
 <footer class="foot"><span class="dot" aria-hidden="true"></span>Private session. History, cookies and storage are cleared when Null closes.</footer>
 <script>
-const f=document.getElementById('f'),q=document.getElementById('q');q.focus();
-f.addEventListener('submit',e=>{e.preventDefault();const v=q.value.trim();if(!v){q.focus();return;}location.href='null://go?to='+encodeURIComponent(v);});
-const eng=document.getElementById('eng');eng.addEventListener('click',()=>{location.href='null://cycle-engine';});
+const f=document.getElementById('f'),q=document.getElementById('q');
+const eng=document.getElementById('eng'),menu=document.getElementById('engMenu'),engName=document.getElementById('engName'),engIcon=document.getElementById('engIcon'),clear=document.getElementById('clear');
+const opts=[...menu.querySelectorAll('[role=option]')];
+q.focus();
+function setMenu(open){menu.hidden=!open;eng.setAttribute('aria-expanded',String(open));}
+function pick(id){const o=opts.find(x=>x.dataset.id===id);if(!o)return;const nm=o.querySelector('.nm').textContent;engIcon.src=o.querySelector('img').src;engName.textContent=nm;q.placeholder='Search '+nm+' or enter address';eng.setAttribute('aria-label','Search engine: '+nm+'. Opens engine menu.');opts.forEach(x=>x.setAttribute('aria-selected',String(x===o)));setMenu(false);q.focus();location.href='null://set-engine?id='+encodeURIComponent(id);}
+const selected=()=>opts.find(o=>o.getAttribute('aria-selected')==='true')||opts[0];
+eng.addEventListener('click',e=>{e.stopPropagation();setMenu(menu.hidden);});
+eng.addEventListener('keydown',e=>{if(e.key==='ArrowDown'){e.preventDefault();setMenu(true);selected().focus();}});
+menu.addEventListener('click',e=>e.stopPropagation());
+opts.forEach(o=>o.addEventListener('click',()=>pick(o.dataset.id)));
+document.addEventListener('click',()=>setMenu(false));
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!menu.hidden){e.preventDefault();setMenu(false);eng.focus();}});
+function syncClear(){clear.hidden=!q.value;}
+q.addEventListener('input',syncClear);syncClear();
+clear.addEventListener('click',()=>{q.value='';syncClear();q.focus();});
+f.addEventListener('submit',e=>{e.preventDefault();const v=q.value.trim();if(!v){const box=document.querySelector('.inp');box.classList.remove('nudge');void box.offsetWidth;box.classList.add('nudge');q.focus();return;}location.href='null://go?to='+encodeURIComponent(v);});
 const c=document.getElementById('clock'),d=document.getElementById('date'),g=document.getElementById('greet');
 function tick(){try{const n=new Date();c.textContent=n.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});d.textContent=n.toLocaleDateString([],{weekday:'short',month:'short',day:'numeric'});const h=n.getHours();g.textContent=h<5?'Good night.':h<12?'Good morning.':h<18?'Good afternoon.':'Good evening.';}catch{}}
 tick();setInterval(tick,30000);
@@ -313,7 +364,7 @@ export function registerNullProtocol(): void {
       if (host === 'go') {
         return new Response('Redirecting…', { status: 204 });
       }
-      if (host === 'cycle-engine') {
+      if (host === 'set-engine') {
         return new Response('Switching search engine…', { status: 204 });
       }
       if (host === 'newtab') {

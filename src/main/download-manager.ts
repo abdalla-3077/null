@@ -28,7 +28,7 @@ export async function triggerEmergency(): Promise<void> {
   if (url === 'about:blank') {
     createTab('about:blank', true);
   } else {
-    createTab(url, true);
+    createTab(url, true, { bypassInsecureWarning: true });
   }
   const win = getMainWindow();
   win?.webContents.send('browser:emergency-done');

@@ -5,6 +5,10 @@ import { TopStrip, BottomStrip, SideStrip } from './components/TabStrips';
 import { SetupWizard } from './components/SetupWizard';
 import { SettingsPage } from './components/SettingsPage';
 import { EmergencyConfirm } from './components/EmergencyConfirm';
+import { InsecureWarning } from './components/InsecureWarning';
+import { CertificateWarning } from './components/CertificateWarning';
+import { SensitiveWarning } from './components/SensitiveWarning';
+import { DevToolsDialog } from './components/DevToolsDialog';
 import { FindBar } from './components/FindBar';
 import { DownloadTray } from './components/DownloadTray';
 import { ContextMenuHost } from './components/ContextMenuHost';
@@ -49,6 +53,11 @@ export function App(): React.ReactElement {
   const ready = useSettingsStore((s) => s.ready);
   const settingsOpen = useUIStore((s) => s.settingsOpen);
   const emergencyOpen = useUIStore((s) => s.emergencyConfirmOpen);
+  const insecureWarning = useUIStore((s) => s.insecureWarning);
+  const certWarning = useUIStore((s) => s.certWarning);
+  const sensitiveWarning = useUIStore((s) => s.sensitiveWarning);
+  const devToolsOpen = useUIStore((s) => s.devToolsOpen);
+  const downloadsOpen = useDownloadStore((s) => s.open);
   const topRef = React.useRef<HTMLDivElement>(null);
   const bottomRef = React.useRef<HTMLDivElement>(null);
   const sideRef = React.useRef<HTMLDivElement>(null);
@@ -62,9 +71,17 @@ export function App(): React.ReactElement {
   }, [settings.theme, settings.appearance]);
 
   React.useEffect(() => {
-    const modalOpen = settingsOpen || emergencyOpen || !settings.setupDone;
+    const modalOpen =
+      settingsOpen ||
+      emergencyOpen ||
+      devToolsOpen ||
+      !!insecureWarning ||
+      !!certWarning ||
+      !!sensitiveWarning ||
+      downloadsOpen ||
+      !settings.setupDone;
     void window.nullBrowser.setModalOpen(modalOpen).catch(() => undefined);
-  }, [settingsOpen, emergencyOpen, settings.setupDone]);
+  }, [settingsOpen, emergencyOpen, devToolsOpen, insecureWarning, certWarning, sensitiveWarning, downloadsOpen, settings.setupDone]);
 
   React.useEffect(() => {
     let offTabs: () => void = () => undefined;
@@ -73,6 +90,9 @@ export function App(): React.ReactElement {
     let offFind: () => void = () => undefined;
     let offCtx: () => void = () => undefined;
     let offEm: () => void = () => undefined;
+    let offWarn: () => void = () => undefined;
+    let offCert: () => void = () => undefined;
+    let offSensitive: () => void = () => undefined;
     const b = window.nullBrowser;
     void window.nullSettings.getAll().then((s) => {
       useSettingsStore.getState().setSettings(s);
@@ -88,6 +108,9 @@ export function App(): React.ReactElement {
     });
     offCtx = b.onContextMenu((m) => useUIStore.getState().set({ ctxMenu: m }));
     offEm = b.onEmergencyDone(() => undefined);
+    offWarn = b.onInsecureWarning((w) => useUIStore.getState().set({ insecureWarning: w }));
+    offCert = b.onCertificateWarning((w) => useUIStore.getState().set({ certWarning: w }));
+    offSensitive = b.onSensitiveWarning((w) => useUIStore.getState().set({ sensitiveWarning: w }));
     b.rendererReady();
     void b.getTabs().then(({ tabs, activeId }) => useTabStore.getState().setTabs(tabs, activeId));
 
@@ -123,8 +146,13 @@ export function App(): React.ReactElement {
         else if (useFindStore.getState().open && activeId) {
           void b.findStop(activeId);
           useFindStore.getState().set({ open: false, query: '', result: null });
-        } else if (ui.settingsOpen) ui.set({ settingsOpen: false });
+        } else if (useDownloadStore.getState().open) useDownloadStore.getState().setOpen(false);
+        else if (ui.settingsOpen) ui.set({ settingsOpen: false });
         else if (ui.emergencyConfirmOpen) ui.set({ emergencyConfirmOpen: false });
+        else if (ui.devToolsOpen) ui.set({ devToolsOpen: false });
+        else if (ui.insecureWarning) ui.set({ insecureWarning: null });
+        else if (ui.certWarning) ui.set({ certWarning: null });
+        else if (ui.sensitiveWarning) ui.set({ sensitiveWarning: null });
         else if (activeId) void b.stop(activeId);
       }
     };
@@ -150,6 +178,9 @@ export function App(): React.ReactElement {
       offFind();
       offCtx();
       offEm();
+      offWarn();
+      offCert();
+      offSensitive();
       window.removeEventListener('keydown', onKey);
     };
   }, []);
@@ -237,7 +268,6 @@ export function App(): React.ReactElement {
             <Toolbar addressRef={addressRef} />
             <AddressBar addressRef={addressRef} />
             <FindBar />
-            <DownloadTray />
           </div>
         )}
         {layout === 'bottom' && (
@@ -245,7 +275,6 @@ export function App(): React.ReactElement {
             <Toolbar addressRef={addressRef} />
             <AddressBar addressRef={addressRef} />
             <FindBar />
-            <DownloadTray />
           </div>
         )}
         <div style={{ flex: 1 }} />
@@ -258,6 +287,11 @@ export function App(): React.ReactElement {
       {!settings.setupDone && <SetupWizard />}
       {settingsOpen && <SettingsPage />}
       {emergencyOpen && <EmergencyConfirm />}
+      {insecureWarning && <InsecureWarning />}
+      {certWarning && <CertificateWarning />}
+      {sensitiveWarning && <SensitiveWarning />}
+      {devToolsOpen && <DevToolsDialog />}
+      <DownloadTray />
       <ContextMenuHost />
     </div>
   );
