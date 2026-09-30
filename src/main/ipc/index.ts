@@ -12,6 +12,7 @@ import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import {
   applyDeviceProfileToAllTabs,
+  approveCertificate,
   closeTab,
   createTab,
   duplicateTab,
@@ -24,6 +25,8 @@ import {
   goHome,
   layoutTabViews,
   navigateTab,
+  navigateTabConfirmed,
+  navigateSensitiveConfirmed,
   openExternal,
   reloadTab,
   refreshNewTabPages,
@@ -55,8 +58,9 @@ import { setAiDownloadAttacher } from '../ai-panel-manager';
 import { attachDownloadHandler } from '../download-manager';
 import { getAllSettings, getSetting, setSetting } from '../settings-store';
 import { writeInternalPages } from '../null-protocol';
+import { fetchSiteResource, inspectTab, setTabDevToolsOpen } from '../site-inspector';
 import { DEVICE_PROFILES, isValidHttpUrl } from '../../shared/config';
-import type { AppSettings } from '../../shared/types';
+import type { AppSettings, SiteResourceKind } from '../../shared/types';
 
 function senderWindow(event: Electron.IpcMainInvokeEvent): BrowserWindow | null {
   return BrowserWindow.fromWebContents(event.sender);
@@ -120,6 +124,15 @@ export function registerIpc(preloadPath: string): void {
   ipcMain.handle('browser:close-tab', (_e, id: string) => closeTab(id));
   ipcMain.handle('browser:activate-tab', (_e, id: string) => setActiveTab(id));
   ipcMain.handle('browser:navigate', (_e, id: string, input: string) => navigateTab(id, input));
+  ipcMain.handle('browser:navigate-confirm', (_e, id: string, url: string) =>
+    navigateTabConfirmed(id, url),
+  );
+  ipcMain.handle('browser:sensitive-confirm', (_e, id: string, url: string, trustHost: boolean) =>
+    navigateSensitiveConfirmed(id, url, !!trustHost),
+  );
+  ipcMain.handle('browser:cert-approve', (_e, id: string, url: string) =>
+    approveCertificate(id, url),
+  );
   ipcMain.handle('browser:reload', (_e, id: string, hard?: boolean) => reloadTab(id, !!hard));
   ipcMain.handle('browser:stop', (_e, id: string) => stopTab(id));
   ipcMain.handle('browser:go-back', (_e, id: string) => goBack(id));
@@ -131,6 +144,13 @@ export function registerIpc(preloadPath: string): void {
   ipcMain.handle('browser:toggle-pin', (_e, id: string) => togglePin(id));
   ipcMain.handle('browser:reorder-tabs', (_e, ids: string[]) => reorderTabs(ids));
   ipcMain.handle('browser:get-tabs', () => ({ tabs: getTabs(), activeId: getActiveTabId() }));
+  ipcMain.handle('browser:dev-info', (_e, id: string | null) => inspectTab(id ?? getActiveTabId()));
+  ipcMain.handle('browser:dev-resource', (_e, id: string | null, kind: SiteResourceKind, url?: string) =>
+    fetchSiteResource(id ?? getActiveTabId(), kind, url),
+  );
+  ipcMain.handle('browser:dev-devtools', (_e, id: string, open: boolean) =>
+    setTabDevToolsOpen(id, !!open),
+  );
   ipcMain.handle('browser:find', (_e, id: string, q: string, fwd?: boolean, mc?: boolean) =>
     findInPage(id, q, fwd ?? true, mc ?? false),
   );

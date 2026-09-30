@@ -73,9 +73,34 @@ export function resolveInputToUrl(input: string, engineId: SearchEngineId): stri
     /^\d{1,3}(\.\d{1,3}){3}(:\d+)?(\/\S*)?$/.test(noProto) ||
     /^[^/\s]+\.[a-zA-Z]{2,}(:\d+)?(\/\S*)?$/.test(noProto)
   ) {
-    return `https://${noProto}`;
+    return `${isLocalNetworkInput(noProto) ? 'http' : 'https'}://${noProto}`;
   }
   return SEARCH_ENGINES[engineId].searchUrl.replace('%s', encodeURIComponent(trimmed));
+}
+
+export function isLocalNetworkInput(value: string): boolean {
+  const host = value.split('/')[0].replace(/:\d+$/, '').toLowerCase();
+  if (
+    host === 'localhost' ||
+    host.endsWith('.localhost') ||
+    host.endsWith('.local') ||
+    host.endsWith('.lan') ||
+    host.endsWith('.home')
+  ) {
+    return true;
+  }
+  const m = /^(\d{1,3})\.(\d{1,3})\.\d{1,3}\.\d{1,3}$/.exec(host);
+  if (!m) return false;
+  const a = Number(m[1]);
+  const b = Number(m[2]);
+  return (
+    a === 0 ||
+    a === 10 ||
+    a === 127 ||
+    (a === 192 && b === 168) ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 169 && b === 254)
+  );
 }
 
 export function isValidHttpUrl(value: string): boolean {
@@ -85,6 +110,10 @@ export function isValidHttpUrl(value: string): boolean {
   } catch {
     return false;
   }
+}
+
+export function isInsecureHttpUrl(value: string): boolean {
+  return /^http:\/\//i.test(value);
 }
 
 export const NULL_NEWTAB = 'null://newtab';

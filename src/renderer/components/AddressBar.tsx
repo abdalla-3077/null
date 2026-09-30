@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { useTabStore } from '../stores';
-import { Icon } from './icons';
+import { Icon, type IconName } from './icons';
 
 export function AddressBar({ addressRef }: { addressRef: React.RefObject<HTMLInputElement | null> }): React.ReactElement {
   const tabs = useTabStore((s) => s.tabs);
@@ -27,13 +27,32 @@ export function AddressBar({ addressRef }: { addressRef: React.RefObject<HTMLInp
     (ref.current ?? localRef.current)?.blur();
   };
 
-  const isSecure = !!active?.url && /^(https|null):/i.test(active.url);
+  const url = active?.url ?? '';
+  const security: 'secure' | 'insecure' | 'warning' | 'internal' | 'unknown' = active?.certError
+    ? 'warning'
+    : /^https:/i.test(url)
+      ? 'secure'
+      : /^http:\/\//i.test(url)
+        ? 'insecure'
+        : /^(null|file|about|data|chrome):/i.test(url)
+          ? 'internal'
+          : 'unknown';
+  const affix: { icon: IconName; title: string } =
+    security === 'secure'
+      ? { icon: 'lock', title: 'Connection is secure (HTTPS)' }
+      : security === 'warning'
+        ? { icon: 'alert', title: 'Certificate not trusted — you chose to proceed' }
+        : security === 'insecure'
+          ? { icon: 'unlock', title: 'Not secure — this page uses plain HTTP' }
+          : security === 'internal'
+            ? { icon: 'lock', title: 'Null internal page' }
+            : { icon: 'search', title: 'Search or enter address' };
   const showValue = focused || !active || active.url === 'null://newtab' || !active.title;
 
   return (
     <div className="address-wrap">
-      <span className="address-affix" aria-hidden>
-        <Icon name={isSecure ? 'lock' : 'search'} size={14} />
+      <span className={`address-affix ${security}`} title={affix.title} aria-hidden>
+        <Icon name={affix.icon} size={14} />
       </span>
       <input
         ref={ref as React.RefObject<HTMLInputElement>}

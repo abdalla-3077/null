@@ -2,7 +2,13 @@ import { WebContentsView, session, shell } from 'electron';
 import { randomUUID } from 'node:crypto';
 import { getMainWindow, getContentBounds, isModalOpen } from './window-manager';
 import { getAllSettings, getSetting, setSetting } from './settings-store';
-import { DEVICE_PROFILES, NULL_NEWTAB, resolveInputToUrl } from '../shared/config';
+import { DEVICE_PROFILES, NULL_NEWTAB, isInsecureHttpUrl, resolveInputToUrl } from '../shared/config';
+import {
+  classifySensitiveUrl,
+  isHostTrusted,
+  trustHostForUrl,
+  type SensitiveCategory,
+} from '../shared/sensitive-sites';
 import { getNewtabUrl, writeInternalPages } from './null-protocol';
 import type { SearchEngineId, TabInfo } from '../shared/types';
 
@@ -18,10 +24,12 @@ interface TabRecord {
   audible: boolean;
   muted: boolean;
   pinned: boolean;
+  certError: boolean;
   order: number;
 }
 
 const tabs = new Map<string, TabRecord>();
+const approvedCertHosts = new Set<string>();
 let activeTabId: string | null = null;
 let closedStack: { url: string; title: string }[] = [];
 let emit: (channel: string, ...args: unknown[]) => void = () => undefined;
@@ -44,6 +52,75 @@ export function setTabEventEmitter(fn: (channel: string, ...args: unknown[]) => 
   emit = fn;
 }
 
+function shouldWarnInsecure(url: string, currentUrl: string, always = false): boolean {
+  if (!getSetting('warnOnInsecureHttp') || !isInsecureHttpUrl(url)) return false;
+  return always || !isInsecureHttpUrl(currentUrl);
+}
+
+function requestInsecureWarning(tabId: string, url: string): void {
+  emit('browser:insecure-warning', { tabId, url });
+}
+
+function shouldWarnSensitive(url: string): SensitiveCategory | null {
+  if (!getSetting('warnSensitiveSites')) return null;
+  const category = classifySensitiveUrl(url);
+  if (!category) return null;
+  if (category === 'porn' && !getSetting('warnPorn')) return null;
+  if (category === 'gambling' && !getSetting('warnGambling')) return null;
+  if (category === 'alcohol' && !getSetting('warnAlcohol')) return null;
+  const host = trustHostForUrl(url);
+  if (host && isHostTrusted(host, getSetting('trustedSensitiveHosts'))) return null;
+  return category;
+}
+
+function requestSensitiveWarning(tabId: string, url: string, category: SensitiveCategory): void {
+  emit('browser:sensitive-warning', { tabId, url, host: trustHostForUrl(url), category });
+}
+
+function hostOf(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return '';
+  }
+}
+
+export function handleCertificateError(
+  event: Electron.Event,
+  webContents: Electron.WebContents,
+  url: string,
+  error: string,
+  certificate: Electron.Certificate,
+  callback: (isTrusted: boolean) => void,
+  isMainFrame: boolean,
+): void {
+  event.preventDefault();
+  const host = hostOf(url);
+  if (host && approvedCertHosts.has(host)) {
+    callback(true);
+    return;
+  }
+  if (isMainFrame) {
+    const record = getViewByContentsId(webContents.id);
+    if (record) {
+      emit('browser:cert-warning', {
+        tabId: record.id,
+        url,
+        host,
+        error,
+        issuer: certificate.issuerName ?? '',
+      });
+    }
+  }
+  callback(false);
+}
+
+export function approveCertificate(tabId: string, url: string): void {
+  const host = hostOf(url);
+  if (host) approvedCertHosts.add(host);
+  navigateTabConfirmed(tabId, url);
+}
+
 function applyUserAgentToView(view: WebContentsView): void {
   const profile = DEVICE_PROFILES[getSetting('deviceProfile')] ?? DEVICE_PROFILES.linux;
   view.webContents.setUserAgent(profile.userAgent);
@@ -61,6 +138,7 @@ function snapshot(r: TabRecord): TabInfo {
     audible: r.audible,
     muted: r.muted,
     pinned: r.pinned,
+    certError: r.certError,
     active: r.id === activeTabId,
   };
 }
@@ -89,6 +167,7 @@ function attachViewEvents(record: TabRecord): void {
   });
   wc.on('did-navigate', (_e, url) => {
     record.url = url.startsWith('file://') && url.includes('null-pages') ? NULL_NEWTAB : url;
+    record.certError = approvedCertHosts.has(hostOf(url));
     record.canGoBack = wc.navigationHistory.canGoBack();
     record.canGoForward = wc.navigationHistory.canGoForward();
     broadcastTabs();
@@ -131,9 +210,15 @@ function attachViewEvents(record: TabRecord): void {
     broadcastTabs();
   });
   wc.on('will-navigate', (e, url) => {
-    if (url.startsWith('null://cycle-engine')) {
+    if (url.startsWith('null://set-engine')) {
       e.preventDefault();
-      cycleSearchEngine();
+      let engineId = '';
+      try {
+        engineId = new URL(url).searchParams.get('id') ?? '';
+      } catch {
+        engineId = '';
+      }
+      applySearchEngine(engineId, record.id);
       return;
     }
     if (url.startsWith('null://go')) {
@@ -141,6 +226,25 @@ function attachViewEvents(record: TabRecord): void {
       const u = new URL(url);
       const to = u.searchParams.get('to') ?? '';
       if (to) navigateTab(record.id, to);
+      return;
+    }
+    if (shouldWarnInsecure(url, record.url)) {
+      e.preventDefault();
+      requestInsecureWarning(record.id, url);
+      return;
+    }
+    const sensitive = shouldWarnSensitive(url);
+    if (sensitive) {
+      e.preventDefault();
+      requestSensitiveWarning(record.id, url, sensitive);
+    }
+  });
+  wc.on('will-redirect', (e, url) => {
+    if (url.startsWith('null://') || url.startsWith('file://')) return;
+    const sensitive = shouldWarnSensitive(url);
+    if (sensitive) {
+      e.preventDefault();
+      requestSensitiveWarning(record.id, url, sensitive);
     }
   });
   wc.setWindowOpenHandler(({ url }) => {
@@ -152,6 +256,12 @@ function attachViewEvents(record: TabRecord): void {
     }
     if (url.startsWith('null://')) {
       void record.view.webContents.loadURL(url).catch(() => undefined);
+      return { action: 'deny' };
+    }
+    const sensitive = shouldWarnSensitive(url);
+    if (sensitive) {
+      const pendingId = createTab(NULL_NEWTAB, true);
+      requestSensitiveWarning(pendingId, url, sensitive);
       return { action: 'deny' };
     }
     void createTab(url, true);
@@ -171,7 +281,11 @@ function attachViewEvents(record: TabRecord): void {
   });
 }
 
-export function createTab(rawUrl?: string, activate = true): string {
+export function createTab(
+  rawUrl?: string,
+  activate = true,
+  options?: { bypassInsecureWarning?: boolean },
+): string {
   const win = getMainWindow();
   if (!win) throw new Error('No main window');
   const id = randomUUID();
@@ -182,6 +296,21 @@ export function createTab(rawUrl?: string, activate = true): string {
         ? resolveInputToUrl(rawUrl, getSetting('searchEngine'))
         : rawUrl
       : NULL_NEWTAB;
+  let gatedInsecureUrl: string | null = null;
+  if (!options?.bypassInsecureWarning && shouldWarnInsecure(initialUrl, '')) {
+    gatedInsecureUrl = initialUrl;
+    initialUrl = NULL_NEWTAB;
+  }
+  let gatedSensitiveUrl: string | null = null;
+  let gatedSensitiveCategory: SensitiveCategory | null = null;
+  if (!gatedInsecureUrl) {
+    const sensitive = shouldWarnSensitive(initialUrl);
+    if (sensitive) {
+      gatedSensitiveUrl = initialUrl;
+      gatedSensitiveCategory = sensitive;
+      initialUrl = NULL_NEWTAB;
+    }
+  }
   const logicalUrl = initialUrl;
   if (initialUrl === NULL_NEWTAB || initialUrl === 'null://newtab/') {
     try {
@@ -214,6 +343,7 @@ export function createTab(rawUrl?: string, activate = true): string {
     audible: false,
     muted: false,
     pinned: false,
+    certError: false,
     order: orderCounter++,
   };
   tabs.set(id, record);
@@ -226,6 +356,10 @@ export function createTab(rawUrl?: string, activate = true): string {
     updateViewVisibility();
   }
   broadcastTabs();
+  if (gatedInsecureUrl) requestInsecureWarning(id, gatedInsecureUrl);
+  else if (gatedSensitiveUrl && gatedSensitiveCategory) {
+    requestSensitiveWarning(id, gatedSensitiveUrl, gatedSensitiveCategory);
+  }
   return id;
 }
 
@@ -306,6 +440,36 @@ export function navigateTab(id: string, input: string): void {
   const record = tabs.get(id);
   if (!record) return;
   const url = resolveInputToUrl(input, getSetting('searchEngine'));
+  const sensitive = shouldWarnSensitive(url);
+  if (sensitive) {
+    requestSensitiveWarning(id, url, sensitive);
+    return;
+  }
+  if (shouldWarnInsecure(url, record.url, true)) {
+    requestInsecureWarning(id, url);
+    return;
+  }
+  void record.view.webContents.loadURL(url).catch(() => undefined);
+}
+
+export function navigateTabConfirmed(id: string, url: string): void {
+  const record = tabs.get(id);
+  if (!record) return;
+  void record.view.webContents.loadURL(url).catch(() => undefined);
+}
+
+export function navigateSensitiveConfirmed(id: string, url: string, trustHost: boolean): void {
+  const record = tabs.get(id);
+  if (!record) return;
+  if (trustHost) {
+    const host = trustHostForUrl(url);
+    if (host) {
+      const current = getSetting('trustedSensitiveHosts');
+      if (!isHostTrusted(host, current)) {
+        setSetting('trustedSensitiveHosts', [...current, host]);
+      }
+    }
+  }
   void record.view.webContents.loadURL(url).catch(() => undefined);
 }
 
@@ -353,9 +517,10 @@ export function goHome(id: string): void {
 
 const ENGINE_ORDER: SearchEngineId[] = ['google', 'bing', 'duckduckgo'];
 
-export function cycleSearchEngine(): SearchEngineId {
-  const cur = getSetting('searchEngine');
-  const next = ENGINE_ORDER[(ENGINE_ORDER.indexOf(cur) + 1) % ENGINE_ORDER.length];
+export function applySearchEngine(id: string, exceptTabId?: string): SearchEngineId | null {
+  const next = ENGINE_ORDER.find((engine) => engine === id);
+  if (!next) return null;
+  if (getSetting('searchEngine') === next) return next;
   setSetting('searchEngine', next);
   try {
     writeInternalPages();
@@ -366,6 +531,7 @@ export function cycleSearchEngine(): SearchEngineId {
   try {
     const newtabUrl = getNewtabUrl();
     for (const r of tabs.values()) {
+      if (r.id === exceptTabId) continue;
       let live = '';
       try {
         live = r.view.webContents.getURL();
@@ -470,6 +636,7 @@ export function clearAllTabs(): void {
   }
   tabs.clear();
   closedStack = [];
+  approvedCertHosts.clear();
   activeTabId = null;
 }
 

@@ -10,16 +10,22 @@ export type IconName =
   | 'download'
   | 'settings'
   | 'alert'
+  | 'eyeOff'
+  | 'dice'
+  | 'martini'
   | 'chevronUp'
   | 'chevronDown'
   | 'search'
   | 'globe'
   | 'lock'
+  | 'unlock'
   | 'volume'
   | 'volumeX'
   | 'check'
   | 'folder'
-  | 'external';
+  | 'external'
+  | 'code'
+  | 'copy';
 
 const PATHS: Record<IconName, React.ReactNode> = {
   back: (
@@ -79,6 +85,32 @@ const PATHS: Record<IconName, React.ReactNode> = {
       <path d="M12 18.5v.5" />
     </>
   ),
+  eyeOff: (
+    <>
+      <path d="M3 3l18 18" />
+      <path d="M10.6 5.1A9.8 9.8 0 0 1 12 5c7 0 10 7 10 7a17 17 0 0 1-2.9 3.9" />
+      <path d="M6.6 6.6A16.4 16.4 0 0 0 2 12s3 7 10 7c1.5 0 2.9-.3 4.1-.9" />
+      <path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" />
+    </>
+  ),
+  dice: (
+    <>
+      <rect x="3" y="3" width="18" height="18" rx="4" />
+      <circle cx="8.5" cy="8.5" r="1" fill="currentColor" stroke="none" />
+      <circle cx="15.5" cy="15.5" r="1" fill="currentColor" stroke="none" />
+      <circle cx="15.5" cy="8.5" r="1" fill="currentColor" stroke="none" />
+      <circle cx="8.5" cy="15.5" r="1" fill="currentColor" stroke="none" />
+    </>
+  ),
+  martini: (
+    <>
+      <path d="M4 5h16l-8 7z" />
+      <path d="M12 12v7" />
+      <path d="M8 21h8" />
+      <path d="M17 3l-2 2" />
+      <circle cx="17.5" cy="5.5" r="0.6" fill="currentColor" stroke="none" />
+    </>
+  ),
   chevronUp: <path d="M6 15l6-6 6 6" />,
   chevronDown: <path d="M6 9l6 6 6-6" />,
   search: (
@@ -99,6 +131,12 @@ const PATHS: Record<IconName, React.ReactNode> = {
     <>
       <rect x="5" y="11" width="14" height="9" rx="2" />
       <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+    </>
+  ),
+  unlock: (
+    <>
+      <rect x="5" y="11" width="14" height="9" rx="2" />
+      <path d="M8 11V8a4 4 0 0 1 7.6-1.6" />
     </>
   ),
   volume: (
@@ -122,6 +160,18 @@ const PATHS: Record<IconName, React.ReactNode> = {
       <path d="M14 4h6v6" />
       <path d="M20 4L10 14" />
       <path d="M18 13v6a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h6" />
+    </>
+  ),
+  code: (
+    <>
+      <path d="M9 8l-4 4 4 4" />
+      <path d="M15 8l4 4-4 4" />
+    </>
+  ),
+  copy: (
+    <>
+      <rect x="9" y="9" width="11" height="11" rx="2" />
+      <path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1" />
     </>
   ),
 };

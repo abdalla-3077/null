@@ -61,6 +61,7 @@ export function Toolbar({ addressRef }: { addressRef: React.RefObject<HTMLInputE
   const dlOpen = useDownloadStore((s) => s.open);
   const setDl = useDownloadStore((s) => s.setOpen);
   const setUI = useUIStore((s) => s.set);
+  const devToolsOpen = useUIStore((s) => s.devToolsOpen);
   const settings = useSettingsStore((s) => s.settings);
   const b = window.nullBrowser;
   const activeCount = downloads.filter((d) => d.state === 'progressing').length;
@@ -73,7 +74,15 @@ export function Toolbar({ addressRef }: { addressRef: React.RefObject<HTMLInputE
       <AiRail />
       <div style={{ flex: 1 }} />
       <button
-        className="icon-btn dl-btn"
+        className={`icon-btn${devToolsOpen ? ' active' : ''}`}
+        title="Page inspector"
+        aria-label="Open page inspector"
+        onClick={() => setUI({ devToolsOpen: true })}
+      >
+        <Icon name="code" />
+      </button>
+      <button
+        className={`icon-btn dl-btn${dlOpen ? ' active' : ''}`}
         title={`Downloads${activeCount > 0 ? ` (${activeCount} active)` : ''}`}
         aria-label="Show downloads"
         onClick={() => {

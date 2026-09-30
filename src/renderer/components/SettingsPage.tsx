@@ -162,6 +162,54 @@ export function SettingsPage(): React.ReactElement {
                   <button className="btn danger" onClick={() => setClearConfirm(true)}>Clear session data</button>
                 </div>
                 <div className="row-line">
+                  <span className="row-label">Warn before opening HTTP pages<span className="row-hint">Ask before loading a page that is not secured with HTTPS</span></span>
+                  <input type="checkbox" className="switch" role="switch" checked={settings.warnOnInsecureHttp} onChange={(e) => void set('warnOnInsecureHttp', e.target.checked)} aria-label="Warn before opening HTTP pages" />
+                </div>
+                <div className="row-line">
+                  <span className="row-label">Warn before sensitive sites<span className="row-hint">Show a category-specific warning for porn, gambling and alcohol sites</span></span>
+                  <input type="checkbox" className="switch" role="switch" checked={settings.warnSensitiveSites} onChange={(e) => void set('warnSensitiveSites', e.target.checked)} aria-label="Warn before sensitive sites" />
+                </div>
+                {settings.warnSensitiveSites && (
+                  <>
+                    <div className="row-line">
+                      <span className="row-label">Pornography warnings<span className="row-hint">Adult and explicit sexual content</span></span>
+                      <input type="checkbox" className="switch" role="switch" checked={settings.warnPorn} onChange={(e) => void set('warnPorn', e.target.checked)} aria-label="Pornography warnings" />
+                    </div>
+                    <div className="row-line">
+                      <span className="row-label">Gambling warnings<span className="row-hint">Real-money betting, casinos and poker</span></span>
+                      <input type="checkbox" className="switch" role="switch" checked={settings.warnGambling} onChange={(e) => void set('warnGambling', e.target.checked)} aria-label="Gambling warnings" />
+                    </div>
+                    <div className="row-line">
+                      <span className="row-label">Alcohol warnings<span className="row-hint">Sites selling or promoting alcohol</span></span>
+                      <input type="checkbox" className="switch" role="switch" checked={settings.warnAlcohol} onChange={(e) => void set('warnAlcohol', e.target.checked)} aria-label="Alcohol warnings" />
+                    </div>
+                    <div className="field">
+                      <span className="row-label">Trusted sensitive sites<span className="row-hint">These hosts open without a warning</span></span>
+                      {settings.trustedSensitiveHosts.length === 0 ? (
+                        <p className="settings-desc">No trusted sites yet.</p>
+                      ) : (
+                        <div>
+                          {settings.trustedSensitiveHosts.map((host) => (
+                            <div key={host} className="row-line">
+                              <span>{host}</span>
+                              <button
+                                className="btn ghost"
+                                onClick={() => void set('trustedSensitiveHosts', settings.trustedSensitiveHosts.filter((h) => h !== host))}
+                                aria-label={`Remove ${host} from trusted sites`}
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {settings.trustedSensitiveHosts.length > 0 && (
+                        <button className="btn danger" onClick={() => void set('trustedSensitiveHosts', [])}>Clear all trusted sites</button>
+                      )}
+                    </div>
+                  </>
+                )}
+                <div className="row-line">
                   <span className="row-label">Emergency destination<span className="row-hint">Where emergency mode lands</span></span>
                   <select value={settings.emergencyDestination} onChange={(e) => void set('emergencyDestination', e.target.value as never)} aria-label="Emergency destination">
                     <option value="google">Google</option>
