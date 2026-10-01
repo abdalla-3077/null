@@ -1,13 +1,13 @@
-import { app, dialog, session as electronSession, shell } from 'electron';
+import { app, dialog, shell } from 'electron';
 import { randomUUID as nodeRandomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { getMainWindow } from './window-manager';
 import { clearPrivacyData } from './privacy-manager';
-import { clearAllTabs, createTab, getTabs } from './tab-manager';
+import { clearAllTabs, createTab } from './tab-manager';
 import { closeAiPanel } from './ai-panel-manager';
 import { getSetting } from './settings-store';
-import { GOOGLE_HOME, NULL_NEWTAB, isValidHttpUrl } from '../shared/config';
+import { GOOGLE_HOME, isValidHttpUrl } from '../shared/config';
 
 export function resolveEmergencyDestination(): string {
   const dest = getSetting('emergencyDestination');
@@ -41,11 +41,13 @@ export interface DownloadRecord {
   savePath: string;
   receivedBytes: number;
   totalBytes: number;
-  state: 'progressing' | 'completed' | 'cancelled' | 'interrupted';
+  state: 'progressing' | 'paused' | 'completed' | 'cancelled' | 'interrupted';
   startTime: number;
 }
 
 const downloads = new Map<string, DownloadRecord>();
+/** Live Electron handles for in-flight downloads. Never serialised to the renderer. */
+const activeItems = new Map<string, Electron.DownloadItem>();
 let downloadIdCounter = 0;
 let emit: (channel: string, ...args: unknown[]) => void = () => undefined;
 
@@ -87,25 +89,17 @@ function handleSessionDownload(event: Electron.Event, item: Electron.DownloadIte
       return;
     }
     item.setSavePath(res);
-    handleWillDownload(id, filename, url, res, item.getTotalBytes());
+    handleWillDownload(id, filename, url, res, item.getTotalBytes(), item);
   } else {
     item.setSavePath(savePath);
-    handleWillDownload(id, filename, url, savePath, item.getTotalBytes());
+    handleWillDownload(id, filename, url, savePath, item.getTotalBytes(), item);
   }
   item.on('updated', (_e, state) => {
-    if (state === 'progressing') updateDownloadProgress(id, item.getReceivedBytes());
+    if (state === 'progressing') updateDownloadProgress(id, item.getReceivedBytes(), item.isPaused());
   });
   item.once('done', (_e, state) => {
     finishDownload(id, state === 'completed' ? 'completed' : state === 'cancelled' ? 'cancelled' : 'interrupted');
   });
-}
-
-export function registerDownloadHandlers(): void {
-  try {
-    attachDownloadHandler(electronSession.fromPartition('null-ai'));
-  } catch {
-    /* ignore */
-  }
 }
 
 export function handleWillDownload(
@@ -114,9 +108,11 @@ export function handleWillDownload(
   url: string,
   savePath: string,
   totalBytes: number,
+  item?: Electron.DownloadItem,
 ): void {
+  const id = downloadId || `dl-${++downloadIdCounter}`;
   const rec: DownloadRecord = {
-    id: downloadId || `dl-${++downloadIdCounter}`,
+    id,
     filename,
     url,
     savePath,
@@ -125,14 +121,18 @@ export function handleWillDownload(
     state: 'progressing',
     startTime: Date.now(),
   };
-  downloads.set(rec.id, rec);
+  downloads.set(id, rec);
+  if (item) activeItems.set(id, item);
   broadcastDownloads();
 }
 
-export function updateDownloadProgress(id: string, received: number): void {
+export function updateDownloadProgress(id: string, received: number, paused = false): void {
   const rec = downloads.get(id);
   if (!rec) return;
   rec.receivedBytes = received;
+  if (rec.state !== 'completed' && rec.state !== 'cancelled' && rec.state !== 'interrupted') {
+    rec.state = paused ? 'paused' : 'progressing';
+  }
   emit('browser:downloads-changed', [...downloads.values()]);
 }
 
@@ -140,6 +140,61 @@ export function finishDownload(id: string, state: DownloadRecord['state']): void
   const rec = downloads.get(id);
   if (!rec) return;
   rec.state = state;
+  activeItems.delete(id);
+  broadcastDownloads();
+}
+
+export function pauseDownload(id: string): void {
+  const rec = downloads.get(id);
+  const item = activeItems.get(id);
+  if (!rec || !item || rec.state !== 'progressing') return;
+  try {
+    item.pause();
+    rec.state = 'paused';
+    broadcastDownloads();
+  } catch {
+    /* item already finished */
+  }
+}
+
+export function resumeDownload(id: string): void {
+  const rec = downloads.get(id);
+  const item = activeItems.get(id);
+  if (!rec || !item || rec.state !== 'paused') return;
+  try {
+    if (item.canResume()) item.resume();
+    rec.state = 'progressing';
+    broadcastDownloads();
+  } catch {
+    /* item already finished */
+  }
+}
+
+export function cancelDownload(id: string): void {
+  const item = activeItems.get(id);
+  try {
+    item?.cancel();
+  } catch {
+    /* ignore */
+  }
+  const rec = downloads.get(id);
+  if (rec) {
+    rec.state = 'cancelled';
+    activeItems.delete(id);
+    broadcastDownloads();
+  }
+}
+
+export function removeDownload(id: string): void {
+  activeItems.delete(id);
+  downloads.delete(id);
+  broadcastDownloads();
+}
+
+export function clearFinishedDownloads(): void {
+  for (const [id, rec] of downloads) {
+    if (rec.state !== 'progressing' && rec.state !== 'paused') downloads.delete(id);
+  }
   broadcastDownloads();
 }
 
@@ -158,15 +213,6 @@ export function openDownloadedFile(savePath: string): void {
       if (win) dialog.showErrorBox('Cannot open file', err);
     }
   });
-}
-
-export function clearDownloadHistory(): void {
-  downloads.clear();
-  broadcastDownloads();
-}
-
-export function getTabUrlsForSession(): string[] {
-  return getTabs().map((t) => t.url);
 }
 
 export function getDownloadLocation(): string {

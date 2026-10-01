@@ -91,6 +91,12 @@ const WALLPAPERS: { id: WallpaperId; name: string }[] = [
   { id: 'forest-canopy', name: 'Forest canopy' },
   { id: 'arctic-glow', name: 'Arctic glow' },
   { id: 'city-rain', name: 'City rain' },
+  { id: 'lavender-dusk', name: 'Lavender dusk' },
+  { id: 'fjord-morning', name: 'Fjord morning' },
+  { id: 'canyon-glow', name: 'Canyon glow' },
+  { id: 'aurora-mesh', name: 'Aurora mesh' },
+  { id: 'ink-tide', name: 'Ink tide' },
+  { id: 'nebula-drift', name: 'Nebula drift' },
 ];
 
 function wallpaperDataUri(id: WallpaperId): string {

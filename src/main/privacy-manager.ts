@@ -1,10 +1,12 @@
 import { app, session } from 'electron';
 import { clearTabsSessionData } from './tab-manager';
 import { clearAiSessionData } from './ai-panel-manager';
+import { resetPermissionMemory } from './permissions';
 
 const KNOWN_PARTITIONS = ['null-ai'];
 
 export async function clearPrivacyData(): Promise<void> {
+  resetPermissionMemory();
   await clearTabsSessionData();
   await clearAiSessionData();
   for (const p of KNOWN_PARTITIONS) {

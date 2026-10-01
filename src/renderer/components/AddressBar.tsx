@@ -1,10 +1,11 @@
 import React, { useEffect, useRef } from 'react';
-import { useTabStore } from '../stores';
+import { useTabStore, useSessionStore } from '../stores';
 import { Icon, type IconName } from './icons';
 
 export function AddressBar({ addressRef }: { addressRef: React.RefObject<HTMLInputElement | null> }): React.ReactElement {
   const tabs = useTabStore((s) => s.tabs);
   const activeId = useTabStore((s) => s.activeId);
+  const isBookmarked = useSessionStore((s) => s.isBookmarked);
   const active = tabs.find((t) => t.id === activeId);
   const [value, setValue] = React.useState('');
   const [focused, setFocused] = React.useState(false);
@@ -48,6 +49,14 @@ export function AddressBar({ addressRef }: { addressRef: React.RefObject<HTMLInp
             ? { icon: 'lock', title: 'Null internal page' }
             : { icon: 'search', title: 'Search or enter address' };
   const showValue = focused || !active || active.url === 'null://newtab' || !active.title;
+  const bookmarkable = !!active && /^https?:/i.test(active.url);
+  const bookmarked = !!active && !!active.url && isBookmarked(active.url);
+  const zoom = active?.zoom ?? 1;
+
+  const toggleBookmark = (): void => {
+    if (!active || !bookmarkable) return;
+    void window.nullBrowser.toggleBookmark(active.url, active.title, active.favicon);
+  };
 
   return (
     <div className="address-wrap">
@@ -103,6 +112,28 @@ export function AddressBar({ addressRef }: { addressRef: React.RefObject<HTMLInp
           });
         }}
       />
+      <div className="address-tools">
+        {zoom !== 1 && (
+          <button
+            className="address-chip"
+            title="Reset zoom to 100%"
+            aria-label={`Zoom ${Math.round(zoom * 100)} percent, click to reset`}
+            onClick={() => activeId && void window.nullBrowser.resetZoom(activeId)}
+          >
+            {Math.round(zoom * 100)}%
+          </button>
+        )}
+        <button
+          className={`address-star${bookmarked ? ' active' : ''}`}
+          title={bookmarked ? 'Remove bookmark' : 'Bookmark this page (Ctrl+D)'}
+          aria-label={bookmarked ? 'Remove bookmark' : 'Bookmark this page'}
+          aria-pressed={bookmarked}
+          disabled={!bookmarkable}
+          onClick={toggleBookmark}
+        >
+          <Icon name={bookmarked ? 'starFilled' : 'star'} size={15} />
+        </button>
+      </div>
     </div>
   );
 }

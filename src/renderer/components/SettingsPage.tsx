@@ -1,5 +1,5 @@
 import React from 'react';
-import { useSettingsStore, useUIStore } from '../stores';
+import { useSessionStore, useSettingsStore, useUIStore } from '../stores';
 import { DEVICE_PROFILES, SEARCH_ENGINES, isValidHttpUrl } from '../../shared/config';
 import type { AIProvider } from '../../shared/types';
 import { randomUUID } from '../uuid';
@@ -14,6 +14,12 @@ const WALLPAPERS = [
   { id: 'forest-canopy', name: 'Forest canopy', scene: 'forest' },
   { id: 'arctic-glow', name: 'Arctic glow', scene: 'arctic' },
   { id: 'city-rain', name: 'City rain', scene: 'city' },
+  { id: 'lavender-dusk', name: 'Lavender dusk', scene: 'lavender' },
+  { id: 'fjord-morning', name: 'Fjord morning', scene: 'fjord' },
+  { id: 'canyon-glow', name: 'Canyon glow', scene: 'canyon' },
+  { id: 'aurora-mesh', name: 'Aurora mesh', scene: 'aurora' },
+  { id: 'ink-tide', name: 'Ink tide', scene: 'ink' },
+  { id: 'nebula-drift', name: 'Nebula drift', scene: 'nebula' },
 ] as const;
 
 const SECTIONS: { id: string; icon: IconName; description: string }[] = [
@@ -33,6 +39,8 @@ type Section = (typeof SECTIONS)[number]['id'];
 export function SettingsPage(): React.ReactElement {
   const settings = useSettingsStore((s) => s.settings);
   const setUI = useUIStore((s) => s.set);
+  const bookmarks = useSessionStore((s) => s.bookmarks);
+  const history = useSessionStore((s) => s.history);
   const [section, setSection] = React.useState<Section>('General');
   const [urlError, setUrlError] = React.useState('');
   const [clearConfirm, setClearConfirm] = React.useState(false);
@@ -166,6 +174,18 @@ export function SettingsPage(): React.ReactElement {
                   <input type="checkbox" className="switch" role="switch" checked={settings.warnOnInsecureHttp} onChange={(e) => void set('warnOnInsecureHttp', e.target.checked)} aria-label="Warn before opening HTTP pages" />
                 </div>
                 <div className="row-line">
+                  <span className="row-label">Upgrade connections to HTTPS<span className="row-hint">Try the secure version of a site first, falling back only if it is unavailable</span></span>
+                  <input type="checkbox" className="switch" role="switch" checked={settings.httpsOnly} onChange={(e) => void set('httpsOnly', e.target.checked)} aria-label="Upgrade connections to HTTPS" />
+                </div>
+                <div className="row-line">
+                  <span className="row-label">Saved bookmarks<span className="row-hint">{bookmarks.length} saved this session</span></span>
+                  <button className="btn" disabled={bookmarks.length === 0} onClick={() => void window.nullBrowser.clearBookmarks()}>Clear bookmarks</button>
+                </div>
+                <div className="row-line">
+                  <span className="row-label">Browsing history<span className="row-hint">{history.length} entries this session</span></span>
+                  <button className="btn" disabled={history.length === 0} onClick={() => void window.nullBrowser.clearHistory()}>Clear history</button>
+                </div>
+                <div className="row-line">
                   <span className="row-label">Warn before sensitive sites<span className="row-hint">Show a category-specific warning for porn, gambling and alcohol sites</span></span>
                   <input type="checkbox" className="switch" role="switch" checked={settings.warnSensitiveSites} onChange={(e) => void set('warnSensitiveSites', e.target.checked)} aria-label="Warn before sensitive sites" />
                 </div>
@@ -274,6 +294,10 @@ export function SettingsPage(): React.ReactElement {
                   <input type="checkbox" className="switch" role="switch" checked={settings.restoreClosedTabs} onChange={(e) => void set('restoreClosedTabs', e.target.checked)} aria-label="Restore closed tabs" />
                 </div>
                 <div className="row-line">
+                  <span className="row-label">Show the bookmarks bar<span className="row-hint">A quick strip of saved pages under the address bar</span></span>
+                  <input type="checkbox" className="switch" role="switch" checked={settings.showBookmarkBar} onChange={(e) => void set('showBookmarkBar', e.target.checked)} aria-label="Show bookmarks bar" />
+                </div>
+                <div className="row-line">
                   <span className="row-label">AI panel width<span className="row-hint">{settings.aiPanelWidth}px</span></span>
                   <input type="range" className="slider" min={240} max={600} value={settings.aiPanelWidth} onChange={(e) => void set('aiPanelWidth', Number(e.target.value))} aria-label="AI panel width" />
                 </div>
@@ -308,6 +332,12 @@ export function SettingsPage(): React.ReactElement {
                   ['Hard reload', 'Ctrl/⌘ + Shift + R'],
                   ['Next / previous tab', 'Ctrl/⌘ + Tab'],
                   ['Find in page', 'Ctrl/⌘ + F'],
+                  ['Command palette', 'Ctrl/⌘ + K'],
+                  ['Search tabs', 'Ctrl/⌘ + Shift + A'],
+                  ['Bookmark this page', 'Ctrl/⌘ + D'],
+                  ['History', 'Ctrl/⌘ + H'],
+                  ['Downloads', 'Ctrl/⌘ + J'],
+                  ['Zoom in / out / reset', 'Ctrl/⌘ + + / - / 0'],
                   ['Clear session data', 'Ctrl/⌘ + Shift + Del'],
                   ['Stop / dismiss', 'Esc'],
                 ].map(([d, k]) => (

@@ -4,6 +4,8 @@ import path from 'node:path';
 import { getSetting } from './settings-store';
 
 let mainWindow: BrowserWindow | null = null;
+/** Every window ever created, so broadcasts reach all of them. */
+const allWindows = new Set<BrowserWindow>();
 let chromeTop = 96;
 let chromeBottom = 0;
 let sideWidth = 0;
@@ -17,7 +19,10 @@ export function setChromeSizes(sizes: {
   side: number;
   ai: number;
 }): void {
-  chromeTop = sizes.top;
+  // The chrome always contains the toolbar, so a non-positive top means the
+  // renderer measured before it was laid out. Ignore it rather than covering
+  // the whole window with the native tab view.
+  if (sizes.top > 0) chromeTop = sizes.top;
   chromeBottom = sizes.bottom;
   sideWidth = sizes.side;
   aiWidth = sizes.ai;
@@ -40,6 +45,10 @@ export function isModalOpen(): boolean {
 
 export function getMainWindow(): BrowserWindow | null {
   return mainWindow;
+}
+
+export function getAllWindows(): BrowserWindow[] {
+  return [...allWindows];
 }
 
 export function getContentBounds(): { x: number; y: number; width: number; height: number } {
@@ -80,13 +89,26 @@ export function resolveAppIcon(): string | undefined {
   return undefined;
 }
 
-export function createMainWindow(preloadPath: string): BrowserWindow {
+export function createMainWindow(preloadPath: string, source?: BrowserWindow): BrowserWindow {
   const { width } = screen.getPrimaryDisplay().workAreaSize;
+  let x: number | undefined;
+  let y: number | undefined;
+  if (source && !source.isDestroyed()) {
+    try {
+      const b = source.getBounds();
+      x = b.x + 32;
+      y = b.y + 32;
+    } catch {
+      /* fall back to default position */
+    }
+  }
   mainWindow = new BrowserWindow({
     width: Math.min(1400, Math.max(1024, width - 80)),
     height: 900,
     minWidth: 900,
     minHeight: 600,
+    x,
+    y,
     autoHideMenuBar: true,
     title: 'Null',
     backgroundColor: '#101014',
@@ -98,9 +120,12 @@ export function createMainWindow(preloadPath: string): BrowserWindow {
       nodeIntegration: false,
     },
   });
-  mainWindow.on('resize', relayout);
-  mainWindow.on('closed', () => {
-    mainWindow = null;
+  allWindows.add(mainWindow);
+  const created = mainWindow;
+  created.on('resize', relayout);
+  created.on('closed', () => {
+    allWindows.delete(created);
+    if (getMainWindow() === created) mainWindow = null;
   });
   return mainWindow;
 }

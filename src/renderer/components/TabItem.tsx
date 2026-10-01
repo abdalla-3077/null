@@ -23,12 +23,14 @@ export function TabItem({
   onActivate,
   onClose,
   onMute,
+  onTogglePin,
   onReorder,
 }: {
   tab: TabInfo;
   onActivate: () => void;
   onClose: () => void;
   onMute: () => void;
+  onTogglePin: () => void;
   onReorder: (dir: -1 | 1) => void;
 }): React.ReactElement {
   return (
@@ -46,6 +48,15 @@ export function TabItem({
       }}
       onKeyDown={(e) => {
         if (e.key === 'Enter') onActivate();
+        else if (e.key === 'ArrowLeft') {
+          e.preventDefault();
+          e.stopPropagation();
+          onReorder(-1);
+        } else if (e.key === 'ArrowRight') {
+          e.preventDefault();
+          e.stopPropagation();
+          onReorder(1);
+        }
       }}
       tabIndex={0}
     >
@@ -64,6 +75,17 @@ export function TabItem({
           <Icon name={tab.muted ? 'volumeX' : 'volume'} size={12} />
         </button>
       )}
+      <button
+        className={`pin${tab.pinned ? ' on' : ''}`}
+        title={tab.pinned ? 'Unpin tab' : 'Pin tab'}
+        aria-label={tab.pinned ? `Unpin ${tab.title}` : `Pin ${tab.title}`}
+        onClick={(e) => {
+          e.stopPropagation();
+          onTogglePin();
+        }}
+      >
+        <Icon name="pin" size={12} />
+      </button>
       {!tab.pinned && (
         <button
           className="x"
@@ -77,10 +99,7 @@ export function TabItem({
           <Icon name="close" size={12} />
         </button>
       )}
-      <span style={{ display: 'none' }}>
-        <button onClick={() => onReorder(-1)} aria-label="Move tab left" />
-        <button onClick={() => onReorder(1)} aria-label="Move tab right" />
-      </span>
+      <span className="tab-hint">← → move</span>
     </div>
   );
 }

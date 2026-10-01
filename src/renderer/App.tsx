@@ -12,16 +12,26 @@ import { DevToolsDialog } from './components/DevToolsDialog';
 import { FindBar } from './components/FindBar';
 import { DownloadTray } from './components/DownloadTray';
 import { ContextMenuHost } from './components/ContextMenuHost';
+import { BookmarkBar } from './components/BookmarkBar';
+import { HistoryDialog } from './components/HistoryDialog';
+import { CommandPalette } from './components/CommandPalette';
+import { PermissionPrompt } from './components/PermissionPrompt';
 import { BrandMark } from './components/BrandMark';
-import { useTabStore, useSettingsStore, useDownloadStore, useFindStore, useUIStore } from './stores';
+import { useTabStore, useSettingsStore, useDownloadStore, useFindStore, useUIStore, useSessionStore } from './stores';
 
 function useChromeReporter(
   topRef: React.RefObject<HTMLDivElement | null>,
   bottomRef: React.RefObject<HTMLDivElement | null>,
   sideRef: React.RefObject<HTMLDivElement | null>,
+  active: boolean,
+  showBookmarkBar: boolean,
 ): void {
   const layout = useSettingsStore((s) => s.settings.tabLayout);
   React.useEffect(() => {
+    // The chrome only exists once the splash is replaced, so wait for `active`.
+    // Reporting before that publishes a zero height, which parks the native tab
+    // view over the whole window and swallows every mouse click.
+    if (!active) return;
     const report = (): void => {
       const top = topRef.current?.offsetHeight ?? 0;
       const bottom = bottomRef.current?.offsetHeight ?? 0;
@@ -29,9 +39,11 @@ function useChromeReporter(
       void window.nullBrowser.setChrome({ top, bottom, side }).catch(() => undefined);
     };
     report();
-    const t = setTimeout(report, 120);
+    const timers = [80, 240, 600].map((ms) => setTimeout(report, ms));
     let ro: ResizeObserver | null = null;
     try {
+      // The observer reports the current size as soon as it attaches, which
+      // guarantees a correct measurement even if nothing resizes later.
       ro = new ResizeObserver(() => report());
       if (topRef.current) ro.observe(topRef.current);
       if (bottomRef.current) ro.observe(bottomRef.current);
@@ -40,12 +52,13 @@ function useChromeReporter(
       /* ResizeObserver unavailable */
     }
     window.addEventListener('resize', report);
+    void document.fonts?.ready?.then(() => report()).catch(() => undefined);
     return () => {
-      clearTimeout(t);
+      for (const t of timers) clearTimeout(t);
       ro?.disconnect();
       window.removeEventListener('resize', report);
     };
-  }, [layout, topRef, bottomRef, sideRef]);
+  }, [active, layout, showBookmarkBar, topRef, bottomRef, sideRef]);
 }
 
 export function App(): React.ReactElement {
@@ -57,12 +70,15 @@ export function App(): React.ReactElement {
   const certWarning = useUIStore((s) => s.certWarning);
   const sensitiveWarning = useUIStore((s) => s.sensitiveWarning);
   const devToolsOpen = useUIStore((s) => s.devToolsOpen);
+  const historyOpen = useUIStore((s) => s.historyOpen);
+  const paletteOpen = useUIStore((s) => s.paletteOpen);
+  const permission = useUIStore((s) => s.permission);
   const downloadsOpen = useDownloadStore((s) => s.open);
   const topRef = React.useRef<HTMLDivElement>(null);
   const bottomRef = React.useRef<HTMLDivElement>(null);
   const sideRef = React.useRef<HTMLDivElement>(null);
   const addressRef = React.useRef<HTMLInputElement>(null);
-  useChromeReporter(topRef, bottomRef, sideRef);
+  useChromeReporter(topRef, bottomRef, sideRef, ready, settings.showBookmarkBar);
 
   React.useEffect(() => {
     document.documentElement.dataset.theme = settings.theme;
@@ -75,13 +91,16 @@ export function App(): React.ReactElement {
       settingsOpen ||
       emergencyOpen ||
       devToolsOpen ||
+      historyOpen ||
+      paletteOpen ||
+      !!permission ||
       !!insecureWarning ||
       !!certWarning ||
       !!sensitiveWarning ||
       downloadsOpen ||
       !settings.setupDone;
     void window.nullBrowser.setModalOpen(modalOpen).catch(() => undefined);
-  }, [settingsOpen, emergencyOpen, devToolsOpen, insecureWarning, certWarning, sensitiveWarning, downloadsOpen, settings.setupDone]);
+  }, [settingsOpen, emergencyOpen, devToolsOpen, historyOpen, paletteOpen, permission, insecureWarning, certWarning, sensitiveWarning, downloadsOpen, settings.setupDone]);
 
   React.useEffect(() => {
     let offTabs: () => void = () => undefined;
@@ -93,6 +112,9 @@ export function App(): React.ReactElement {
     let offWarn: () => void = () => undefined;
     let offCert: () => void = () => undefined;
     let offSensitive: () => void = () => undefined;
+    let offBookmarks: () => void = () => undefined;
+    let offHistory: () => void = () => undefined;
+    let offPermission: () => void = () => undefined;
     const b = window.nullBrowser;
     void window.nullSettings.getAll().then((s) => {
       useSettingsStore.getState().setSettings(s);
@@ -111,8 +133,13 @@ export function App(): React.ReactElement {
     offWarn = b.onInsecureWarning((w) => useUIStore.getState().set({ insecureWarning: w }));
     offCert = b.onCertificateWarning((w) => useUIStore.getState().set({ certWarning: w }));
     offSensitive = b.onSensitiveWarning((w) => useUIStore.getState().set({ sensitiveWarning: w }));
+    offBookmarks = b.onBookmarksChanged((list) => useSessionStore.getState().setBookmarks(list));
+    offHistory = b.onHistoryChanged((list) => useSessionStore.getState().setHistory(list));
+    offPermission = b.onPermissionRequest((r) => useUIStore.getState().set({ permission: r }));
     b.rendererReady();
     void b.getTabs().then(({ tabs, activeId }) => useTabStore.getState().setTabs(tabs, activeId));
+    void b.getBookmarks().then((list) => useSessionStore.getState().setBookmarks(list)).catch(() => undefined);
+    void b.getHistory().then((list) => useSessionStore.getState().setHistory(list)).catch(() => undefined);
 
     const onKey = (e: KeyboardEvent): void => {
       const mod = e.ctrlKey || e.metaKey;
@@ -137,12 +164,44 @@ export function App(): React.ReactElement {
       } else if (mod && e.key.toLowerCase() === 'f') {
         e.preventDefault();
         useFindStore.getState().set({ open: true });
+      } else if (mod && e.shiftKey && e.key.toLowerCase() === 'a') {
+        e.preventDefault();
+        useUIStore.getState().set({ paletteOpen: true, paletteMode: 'tabs' });
+      } else if (mod && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        useUIStore.getState().set({ paletteOpen: true, paletteMode: 'all' });
+      } else if (mod && e.key.toLowerCase() === 'd') {
+        e.preventDefault();
+        const active = useTabStore.getState().tabs.find((t) => t.id === activeId);
+        if (active && /^https?:/i.test(active.url)) {
+          void b.toggleBookmark(active.url, active.title, active.favicon);
+        }
+      } else if (mod && e.key.toLowerCase() === 'h') {
+        e.preventDefault();
+        useUIStore.getState().set({ historyOpen: true });
+      } else if (mod && e.key.toLowerCase() === 'j') {
+        e.preventDefault();
+        useDownloadStore.getState().setOpen(!useDownloadStore.getState().open);
+      } else if (mod && (e.key === '=' || e.key === '+')) {
+        e.preventDefault();
+        if (activeId) void b.zoomIn(activeId);
+      } else if (mod && e.key === '-') {
+        e.preventDefault();
+        if (activeId) void b.zoomOut(activeId);
+      } else if (mod && e.key === '0') {
+        e.preventDefault();
+        if (activeId) void b.resetZoom(activeId);
       } else if (mod && e.key === 'Tab' && !e.shiftKey) {
         e.preventDefault();
         cycleTab(1);
       } else if (e.key === 'Escape') {
         const ui = useUIStore.getState();
         if (ui.ctxMenu) ui.set({ ctxMenu: null });
+        else if (ui.paletteOpen) ui.set({ paletteOpen: false });
+        else if (ui.permission) {
+          void b.respondPermission(ui.permission.id, false);
+          ui.set({ permission: null });
+        } else if (ui.historyOpen) ui.set({ historyOpen: false });
         else if (useFindStore.getState().open && activeId) {
           void b.findStop(activeId);
           useFindStore.getState().set({ open: false, query: '', result: null });
@@ -181,6 +240,9 @@ export function App(): React.ReactElement {
       offWarn();
       offCert();
       offSensitive();
+      offBookmarks();
+      offHistory();
+      offPermission();
       window.removeEventListener('keydown', onKey);
     };
   }, []);
@@ -201,7 +263,6 @@ export function App(): React.ReactElement {
       else if (c === 'shortcut:hard-reload' && activeId) void b.reload(activeId, true);
       else if (c === 'shortcut:find') useFindStore.getState().set({ open: true });
       else if (c === 'shortcut:clear-data') void b.clearSession();
-      else if (c === 'shortcut:escape' && activeId) void b.stop(activeId);
       else if ((c === 'shortcut:next-tab' || c === 'shortcut:prev-tab') && st.tabs.length > 1) {
         const i = st.tabs.findIndex((t) => t.id === activeId);
         const n = st.tabs[(i + (c === 'shortcut:next-tab' ? 1 : -1) + st.tabs.length) % st.tabs.length];
@@ -223,7 +284,6 @@ export function App(): React.ReactElement {
       else if (c === 'shortcut:hard-reload' && activeId) void b.reload(activeId, true);
       else if (c === 'shortcut:find') useFindStore.getState().set({ open: true });
       else if (c === 'shortcut:clear-data') void b.clearSession();
-      else if (c === 'shortcut:escape' && activeId) void b.stop(activeId);
       else if ((c === 'shortcut:next-tab' || c === 'shortcut:prev-tab') && st.tabs.length > 1) {
         const i = st.tabs.findIndex((t) => t.id === activeId);
         const n = st.tabs[(i + (c === 'shortcut:next-tab' ? 1 : -1) + st.tabs.length) % st.tabs.length];
@@ -267,6 +327,7 @@ export function App(): React.ReactElement {
             {layout === 'top' && <TopStrip />}
             <Toolbar addressRef={addressRef} />
             <AddressBar addressRef={addressRef} />
+            {settings.showBookmarkBar && <BookmarkBar />}
             <FindBar />
           </div>
         )}
@@ -274,6 +335,7 @@ export function App(): React.ReactElement {
           <div ref={topRef} className="chrome-top">
             <Toolbar addressRef={addressRef} />
             <AddressBar addressRef={addressRef} />
+            {settings.showBookmarkBar && <BookmarkBar />}
             <FindBar />
           </div>
         )}
@@ -291,6 +353,9 @@ export function App(): React.ReactElement {
       {certWarning && <CertificateWarning />}
       {sensitiveWarning && <SensitiveWarning />}
       {devToolsOpen && <DevToolsDialog />}
+      {historyOpen && <HistoryDialog />}
+      {paletteOpen && <CommandPalette />}
+      {permission && <PermissionPrompt />}
       <DownloadTray />
       <ContextMenuHost />
     </div>
