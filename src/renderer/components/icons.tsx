@@ -25,7 +25,25 @@ export type IconName =
   | 'folder'
   | 'external'
   | 'code'
-  | 'copy';
+  | 'copy'
+  | 'image'
+  | 'imageOff'
+  | 'star'
+  | 'starFilled'
+  | 'pin'
+  | 'zoomIn'
+  | 'zoomOut'
+  | 'history'
+  | 'command'
+  | 'pause'
+  | 'play'
+  | 'trash'
+  | 'bell'
+  | 'camera'
+  | 'mic'
+  | 'mapPin'
+  | 'screen'
+  | 'sliders';
 
 const PATHS: Record<IconName, React.ReactNode> = {
   back: (
@@ -172,6 +190,117 @@ const PATHS: Record<IconName, React.ReactNode> = {
     <>
       <rect x="9" y="9" width="11" height="11" rx="2" />
       <path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1" />
+    </>
+  ),
+  image: (
+    <>
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+      <circle cx="8.5" cy="8.5" r="1.5" />
+      <path d="M21 15l-5-5L5 21" />
+    </>
+  ),
+  imageOff: (
+    <>
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+      <path d="M3 3l18 18" />
+      <path d="M21 15l-5-5" />
+    </>
+  ),
+  star: <path d="M12 3.6l2.6 5.3 5.9.9-4.3 4.2 1 5.8-5.2-2.7-5.2 2.7 1-5.8L3.5 9.8l5.9-.9z" />,
+  starFilled: (
+    <path
+      d="M12 3.6l2.6 5.3 5.9.9-4.3 4.2 1 5.8-5.2-2.7-5.2 2.7 1-5.8L3.5 9.8l5.9-.9z"
+      fill="currentColor"
+      strokeLinejoin="round"
+    />
+  ),
+  pin: (
+    <>
+      <path d="M12 17v5" />
+      <path d="M9 3h6l-1 6 3 3H7l3-3z" />
+    </>
+  ),
+  zoomIn: (
+    <>
+      <circle cx="11" cy="11" r="7" />
+      <path d="M20 20l-3.5-3.5" />
+      <path d="M11 8v6" />
+      <path d="M8 11h6" />
+    </>
+  ),
+  zoomOut: (
+    <>
+      <circle cx="11" cy="11" r="7" />
+      <path d="M20 20l-3.5-3.5" />
+      <path d="M8 11h6" />
+    </>
+  ),
+  history: (
+    <>
+      <path d="M3.5 12a8.5 8.5 0 1 0 2.6-6.1" />
+      <path d="M3 4v5h5" />
+      <path d="M12 8v4.5l3 1.8" />
+    </>
+  ),
+  command: (
+    <>
+      <path d="M9 6a3 3 0 1 0-3 3h3zM15 6a3 3 0 1 1 3 3h-3zM9 18a3 3 0 1 1-3-3h3zM15 18a3 3 0 1 0 3-3h-3z" />
+      <path d="M9 9h6v6H9z" />
+    </>
+  ),
+  pause: (
+    <>
+      <rect x="7" y="5" width="3.5" height="14" rx="1" fill="currentColor" stroke="none" />
+      <rect x="13.5" y="5" width="3.5" height="14" rx="1" fill="currentColor" stroke="none" />
+    </>
+  ),
+  play: <path d="M7 4.5l12 7.5-12 7.5z" fill="currentColor" strokeLinejoin="round" />,
+  trash: (
+    <>
+      <path d="M4 7h16" />
+      <path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+      <path d="M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13" />
+      <path d="M10 11v6M14 11v6" />
+    </>
+  ),
+  bell: (
+    <>
+      <path d="M6 9a6 6 0 1 1 12 0c0 5 2 6 2 6H4s2-1 2-6z" />
+      <path d="M10 19a2 2 0 0 0 4 0" />
+    </>
+  ),
+  camera: (
+    <>
+      <rect x="3" y="7" width="12" height="10" rx="2" />
+      <path d="M15 11l5-3v8l-5-3z" />
+    </>
+  ),
+  mic: (
+    <>
+      <rect x="9" y="3" width="6" height="11" rx="3" />
+      <path d="M6 11a6 6 0 0 0 12 0" />
+      <path d="M12 17v4" />
+    </>
+  ),
+  mapPin: (
+    <>
+      <path d="M12 21s7-5.5 7-11a7 7 0 1 0-14 0c0 5.5 7 11 7 11z" />
+      <circle cx="12" cy="10" r="2.5" />
+    </>
+  ),
+  screen: (
+    <>
+      <rect x="3" y="4" width="18" height="12" rx="2" />
+      <path d="M8 20h8" />
+      <path d="M12 16v4" />
+    </>
+  ),
+  sliders: (
+    <>
+      <path d="M4 6h16M4 12h16M4 18h16" />
+      <circle cx="9" cy="6" r="2.2" fill="var(--surface)" />
+      <circle cx="15" cy="12" r="2.2" fill="var(--surface)" />
+      <circle cx="8" cy="18" r="2.2" fill="var(--surface)" />
     </>
   ),
 };

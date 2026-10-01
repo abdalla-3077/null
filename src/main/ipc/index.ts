@@ -32,33 +32,54 @@ import {
   refreshNewTabPages,
   reorderTabs,
   reopenClosedTab,
+  resetZoom,
   setActiveTab,
   setMuted,
   setTabEventEmitter,
+  setZoom,
   stopFind,
   stopTab,
   togglePin,
+  zoomIn,
+  zoomOut,
 } from '../tab-manager';
 import { closeAiPanel, isAiPanelOpen, layoutAiPanel, openAiPanel } from '../ai-panel-manager';
 import { clearPrivacyData } from '../privacy-manager';
 import {
+  cancelDownload,
+  clearFinishedDownloads,
   finishDownload,
   getDownloadLocation,
   getDownloads,
   handleWillDownload,
   openDownloadedFile,
+  pauseDownload,
+  removeDownload,
+  resumeDownload,
   setDownloadEmitter,
   showDownloadInFolder,
   triggerEmergency,
   updateDownloadProgress,
 } from '../download-manager';
-import { createMainWindow, getMainWindow, onRelayoutNeeded, setChromeSizes, setModalOpen } from '../window-manager';
+import {
+  addBookmark,
+  clearBookmarks,
+  clearHistory,
+  getBookmarks,
+  getHistory,
+  removeBookmark,
+  removeHistoryEntry,
+  setSessionEmitter,
+  toggleBookmark,
+} from '../session-store';
+import { respondPermission, setPermissionEmitter } from '../permissions';
+import { createMainWindow, getAllWindows, getMainWindow, onRelayoutNeeded, setChromeSizes, setModalOpen } from '../window-manager';
 import { setDownloadAttacher } from '../tab-manager';
 import { setAiDownloadAttacher } from '../ai-panel-manager';
 import { attachDownloadHandler } from '../download-manager';
 import { getAllSettings, getSetting, setSetting } from '../settings-store';
 import { writeInternalPages } from '../null-protocol';
-import { fetchSiteResource, inspectTab, setTabDevToolsOpen } from '../site-inspector';
+import { fetchSiteImage, fetchSiteResource, inspectTab, setTabDevToolsOpen } from '../site-inspector';
 import { DEVICE_PROFILES, isValidHttpUrl } from '../../shared/config';
 import type { AppSettings, SiteResourceKind } from '../../shared/types';
 
@@ -67,8 +88,9 @@ function senderWindow(event: Electron.IpcMainInvokeEvent): BrowserWindow | null 
 }
 
 function broadcast(channel: string, ...args: unknown[]): void {
-  const win = getMainWindow();
-  win?.webContents.send(channel, ...args);
+  for (const win of getAllWindows()) {
+    if (!win.isDestroyed()) win.webContents.send(channel, ...args);
+  }
 }
 
 export function registerIpc(preloadPath: string): void {
@@ -77,6 +99,8 @@ export function registerIpc(preloadPath: string): void {
   setAiDownloadAttacher(attachDownloadHandler);
   setTabEventEmitter(broadcast);
   setDownloadEmitter(broadcast);
+  setSessionEmitter(broadcast);
+  setPermissionEmitter(broadcast);
   onRelayoutNeeded(() => {
     layoutTabViews();
     layoutAiPanel();
@@ -87,7 +111,7 @@ export function registerIpc(preloadPath: string): void {
     if (key === 'emergencyCustomUrl' && typeof value === 'string' && value.trim() !== '') {
       if (!isValidHttpUrl(value.trim())) throw new Error('Invalid URL');
     }
-    if (key === 'newTabWallpaper' && !['none', 'coastal-dusk', 'alpine-fog', 'desert-night', 'forest-canopy', 'arctic-glow', 'city-rain'].includes(String(value))) {
+    if (key === 'newTabWallpaper' && !['none', 'coastal-dusk', 'alpine-fog', 'desert-night', 'forest-canopy', 'arctic-glow', 'city-rain', 'lavender-dusk', 'fjord-morning', 'canyon-glow', 'aurora-mesh', 'ink-tide', 'nebula-drift'].includes(String(value))) {
       throw new Error('Invalid wallpaper');
     }
     setSetting(key, value as never);
@@ -144,12 +168,38 @@ export function registerIpc(preloadPath: string): void {
   ipcMain.handle('browser:toggle-pin', (_e, id: string) => togglePin(id));
   ipcMain.handle('browser:reorder-tabs', (_e, ids: string[]) => reorderTabs(ids));
   ipcMain.handle('browser:get-tabs', () => ({ tabs: getTabs(), activeId: getActiveTabId() }));
+  ipcMain.handle('browser:zoom-in', (_e, id: string) => zoomIn(id));
+  ipcMain.handle('browser:zoom-out', (_e, id: string) => zoomOut(id));
+  ipcMain.handle('browser:zoom-reset', (_e, id: string) => resetZoom(id));
+  ipcMain.handle('browser:zoom-set', (_e, id: string, factor: number) => setZoom(id, Number(factor)));
+
+  ipcMain.handle('bookmarks:get', () => getBookmarks());
+  ipcMain.handle('bookmarks:toggle', (_e, url: string, title: string, favicon: string) =>
+    toggleBookmark(url, title, favicon),
+  );
+  ipcMain.handle('bookmarks:add', (_e, url: string, title: string, favicon: string) => {
+    addBookmark(url, title, favicon);
+    return getBookmarks();
+  });
+  ipcMain.handle('bookmarks:remove', (_e, id: string) => removeBookmark(id));
+  ipcMain.handle('bookmarks:clear', () => clearBookmarks());
+
+  ipcMain.handle('history:get', () => getHistory());
+  ipcMain.handle('history:remove', (_e, id: string) => removeHistoryEntry(id));
+  ipcMain.handle('history:clear', () => clearHistory());
+
+  ipcMain.handle('browser:permission-respond', (_e, id: string, allow: boolean) =>
+    respondPermission(id, !!allow),
+  );
   ipcMain.handle('browser:dev-info', (_e, id: string | null) => inspectTab(id ?? getActiveTabId()));
   ipcMain.handle('browser:dev-resource', (_e, id: string | null, kind: SiteResourceKind, url?: string) =>
     fetchSiteResource(id ?? getActiveTabId(), kind, url),
   );
   ipcMain.handle('browser:dev-devtools', (_e, id: string, open: boolean) =>
     setTabDevToolsOpen(id, !!open),
+  );
+  ipcMain.handle('browser:dev-image', (_e, url: string | null, referer?: string | null) =>
+    fetchSiteImage(url, referer),
   );
   ipcMain.handle('browser:find', (_e, id: string, q: string, fwd?: boolean, mc?: boolean) =>
     findInPage(id, q, fwd ?? true, mc ?? false),
@@ -208,13 +258,14 @@ export function registerIpc(preloadPath: string): void {
   ipcMain.handle('browser:downloads', () => getDownloads());
   ipcMain.handle('browser:download-reveal', (_e, p: string) => showDownloadInFolder(p));
   ipcMain.handle('browser:download-open', (_e, p: string) => openDownloadedFile(p));
+  ipcMain.handle('browser:download-pause', (_e, id: string) => pauseDownload(id));
+  ipcMain.handle('browser:download-resume', (_e, id: string) => resumeDownload(id));
+  ipcMain.handle('browser:download-cancel', (_e, id: string) => cancelDownload(id));
+  ipcMain.handle('browser:download-remove', (_e, id: string) => removeDownload(id));
+  ipcMain.handle('browser:download-clear-finished', () => clearFinishedDownloads());
 
-  ipcMain.handle('browser:new-window', () => {
-    const { width, height } = senderWindowSlots();
-    void width;
-    void height;
-    const win = createMainWindow(preloadPathRef);
-    void win;
+  ipcMain.handle('browser:new-window', (event) => {
+    createMainWindow(preloadPathRef, senderWindow(event) ?? undefined);
   });
 
   ipcMain.handle('browser:window-action', (event, action: 'min' | 'max' | 'close') => {
@@ -320,20 +371,16 @@ export function registerIpc(preloadPath: string): void {
         return;
       }
       item.setSavePath(res);
-      handleWillDownload(id, filename, url, res, item.getTotalBytes());
+      handleWillDownload(id, filename, url, res, item.getTotalBytes(), item);
     } else {
       item.setSavePath(savePath);
-      handleWillDownload(id, filename, url, savePath, item.getTotalBytes());
+      handleWillDownload(id, filename, url, savePath, item.getTotalBytes(), item);
     }
     item.on('updated', (_e, state) => {
-      if (state === 'progressing') updateDownloadProgress(id, item.getReceivedBytes());
+      if (state === 'progressing') updateDownloadProgress(id, item.getReceivedBytes(), item.isPaused());
     });
     item.once('done', (_e, state) => {
       finishDownload(id, state === 'completed' ? 'completed' : state === 'cancelled' ? 'cancelled' : 'interrupted');
-      if (state === 'completed') {
-        const rec = getDownloads().find((d) => d.id === id);
-        void rec;
-      }
     });
   });
 
@@ -348,10 +395,6 @@ export function registerIpc(preloadPath: string): void {
 let preloadPathRef = '';
 export function setPreloadPath(p: string): void {
   preloadPathRef = p;
-}
-
-function senderWindowSlots(): { width: number; height: number } {
-  return { width: 1400, height: 900 };
 }
 
 export function openLinkExternal(url: string): void {

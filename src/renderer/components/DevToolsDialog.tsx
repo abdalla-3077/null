@@ -79,6 +79,142 @@ function TagList({ tags }: { tags: PageMetaTag[] }): React.ReactElement | null {
   );
 }
 
+function metaTagValue(tags: PageMetaTag[], label: string): string {
+  const hit = tags.find((t) => t.label.toLowerCase() === label);
+  return hit ? hit.value : '';
+}
+
+function resolveUrl(value: string, base: string): string {
+  if (!value) return '';
+  try {
+    return new URL(value, base || undefined).toString();
+  } catch {
+    return value;
+  }
+}
+
+interface SocialPreview {
+  title: string;
+  description: string;
+  image: string;
+  siteName: string;
+  url: string;
+}
+
+type PreviewImage =
+  | { phase: 'none' }
+  | { phase: 'direct'; url: string }
+  | { phase: 'fetching'; url: string }
+  | { phase: 'ready'; url: string; dataUrl: string }
+  | { phase: 'error'; url: string; error: string };
+
+function PreviewCard({
+  preview,
+  image,
+  source,
+  showSourceToggle,
+  onSource,
+  onImageError,
+  onCopyImage,
+  onOpenImage,
+}: {
+  preview: SocialPreview;
+  image: PreviewImage;
+  source: 'og' | 'twitter';
+  showSourceToggle: boolean;
+  onSource: (source: 'og' | 'twitter') => void;
+  onImageError: () => void;
+  onCopyImage: (url: string) => void;
+  onOpenImage: (url: string) => void;
+}): React.ReactElement {
+  const hasImage = Boolean(preview.image) && (image.phase === 'direct' || image.phase === 'ready');
+  return (
+    <div className="dt-preview">
+      <div className="dt-preview-media">
+        {!preview.image || image.phase === 'none' ? (
+          <div className="dt-preview-fallback">
+            <Icon name="image" size={22} />
+            <span>No preview image</span>
+          </div>
+        ) : image.phase === 'fetching' ? (
+          <div className="dt-preview-fallback">
+            <i className="dt-spinner" />
+            <span>Loading image…</span>
+          </div>
+        ) : image.phase === 'error' ? (
+          <div className="dt-preview-fallback" title={image.error}>
+            <Icon name="imageOff" size={22} />
+            <span>Image unavailable</span>
+            {image.error && <span className="dt-preview-reason">{image.error}</span>}
+          </div>
+        ) : (
+          <img
+            src={image.phase === 'ready' ? image.dataUrl : image.url}
+            alt=""
+            onError={onImageError}
+            referrerPolicy="no-referrer"
+          />
+        )}
+      </div>
+
+      <div className="dt-preview-body">
+        <div className="dt-preview-top">
+          <span className="dt-preview-site">{preview.siteName || 'Untitled site'}</span>
+          {showSourceToggle && (
+            <div className="dt-seg" role="tablist" aria-label="Preview source">
+              <button
+                role="tab"
+                aria-selected={source === 'og'}
+                className={`dt-seg-btn${source === 'og' ? ' active' : ''}`}
+                onClick={() => onSource('og')}
+              >
+                Open Graph
+              </button>
+              <button
+                role="tab"
+                aria-selected={source === 'twitter'}
+                className={`dt-seg-btn${source === 'twitter' ? ' active' : ''}`}
+                onClick={() => onSource('twitter')}
+              >
+                Twitter
+              </button>
+            </div>
+          )}
+        </div>
+
+        <span className="dt-preview-title">{preview.title || 'Untitled'}</span>
+        {preview.description && <span className="dt-preview-desc">{preview.description}</span>}
+
+        <div className="dt-preview-bottom">
+          <span className="dt-preview-url" title={preview.url}>
+            {preview.url || '—'}
+          </span>
+          {hasImage && (
+            <div className="dt-preview-actions">
+              <button
+                className="icon-btn"
+                title="Copy image URL"
+                aria-label="Copy image URL"
+                onClick={() => onCopyImage(preview.image)}
+              >
+                <Icon name="copy" size={15} />
+              </button>
+              <button
+                className="icon-btn"
+                title="Open image in new tab"
+                aria-label="Open image in new tab"
+                onClick={() => onOpenImage(preview.image)}
+              >
+                <Icon name="external" size={15} />
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ResourcePanel({
   result,
   loading,
@@ -189,6 +325,9 @@ export function DevToolsDialog(): React.ReactElement | null {
     sitemap: false,
   });
   const [copied, setCopied] = React.useState('');
+  const [previewSource, setPreviewSource] = React.useState<'og' | 'twitter'>('og');
+  const [previewImage, setPreviewImage] = React.useState<PreviewImage>({ phase: 'none' });
+  const previewReq = React.useRef(0);
 
   const b = window.nullBrowser;
 
@@ -239,10 +378,33 @@ export function DevToolsDialog(): React.ReactElement | null {
     [activeId, b],
   );
 
+  const security: TabSecurity = info?.security ?? 'unknown';
+  const meta = info?.meta ?? null;
+  const ogTags = meta?.openGraph ?? [];
+  const twitterTags = meta?.twitter ?? [];
+  const activeTags = previewSource === 'og' ? ogTags : twitterTags;
+  const tagPrefix = previewSource === 'og' ? 'og:' : 'twitter:';
+  const preview: SocialPreview = {
+    title: metaTagValue(activeTags, `${tagPrefix}title`) || meta?.title || info?.title || '',
+    description: metaTagValue(activeTags, `${tagPrefix}description`) || meta?.description || '',
+    image: resolveUrl(
+      metaTagValue(activeTags, `${tagPrefix}image`) ||
+        (previewSource === 'og' ? metaTagValue(ogTags, 'og:image:secure_url') : ''),
+      info?.url ?? '',
+    ),
+    siteName:
+      metaTagValue(ogTags, 'og:site_name') ||
+      metaTagValue(twitterTags, 'twitter:site') ||
+      info?.host ||
+      '',
+    url: metaTagValue(activeTags, `${tagPrefix}url`) || meta?.canonical || info?.url || '',
+  };
+
   React.useEffect(() => {
     if (!open) return;
     setResources({ robots: null, sitemap: null });
     setCopied('');
+    setPreviewImage({ phase: 'none' });
     void loadInfo();
   }, [open, activeId, loadInfo]);
 
@@ -251,6 +413,22 @@ export function DevToolsDialog(): React.ReactElement | null {
     if (panel === 'robots' && !resources.robots && !resLoading.robots) void loadResource('robots');
     if (panel === 'sitemap' && !resources.sitemap && !resLoading.sitemap) void loadResource('sitemap');
   }, [open, activeId, panel, resources.robots, resources.sitemap, resLoading.robots, resLoading.sitemap, loadResource]);
+
+  React.useEffect(() => {
+    if (!meta) return;
+    setPreviewSource(meta.openGraph.length === 0 && meta.twitter.length > 0 ? 'twitter' : 'og');
+  }, [meta]);
+
+  React.useEffect(() => {
+    if (!open) return;
+    previewReq.current += 1;
+    const target = preview.image;
+    if (!target || !/^(https?:\/\/|data:image\/)/i.test(target)) {
+      setPreviewImage({ phase: 'none' });
+      return;
+    }
+    setPreviewImage({ phase: 'direct', url: target });
+  }, [open, preview.image]);
 
   if (!open) return null;
 
@@ -273,8 +451,23 @@ export function DevToolsDialog(): React.ReactElement | null {
     setInfo((prev) => (prev ? { ...prev, devToolsOpen: next } : prev));
   };
 
-  const security: TabSecurity = info?.security ?? 'unknown';
-  const meta = info?.meta ?? null;
+  const handleImageError = (): void => {
+    if (previewImage.phase !== 'direct') return;
+    const url = previewImage.url;
+    const req = previewReq.current;
+    setPreviewImage({ phase: 'fetching', url });
+    void b
+      .devImage(url, info?.url ?? null)
+      .then((result) => {
+        if (req !== previewReq.current) return;
+        if (result?.ok) setPreviewImage({ phase: 'ready', url, dataUrl: result.dataUrl });
+        else setPreviewImage({ phase: 'error', url, error: result?.error || 'Image could not be loaded.' });
+      })
+      .catch((err: unknown) => {
+        if (req !== previewReq.current) return;
+        setPreviewImage({ phase: 'error', url, error: err instanceof Error ? err.message : 'Image request failed.' });
+      });
+  };
 
   return (
     <div
@@ -345,6 +538,7 @@ export function DevToolsDialog(): React.ReactElement | null {
                   </button>
                 </div>
 
+                <h3 className="dt-section">Page</h3>
                 <div className="dt-rows">
                   <Row label="Title" value={info.title} />
                   <Row label="Host" value={info.host} mono />
@@ -391,6 +585,31 @@ export function DevToolsDialog(): React.ReactElement | null {
               <div className="dt-res-empty">Reading page…</div>
             ) : meta ? (
               <>
+                <PreviewCard
+                  preview={preview}
+                  image={previewImage}
+                  source={previewSource}
+                  showSourceToggle={ogTags.length > 0 && twitterTags.length > 0}
+                  onSource={setPreviewSource}
+                  onImageError={handleImageError}
+                  onCopyImage={(url) => copy(url, 'image')}
+                  onOpenImage={(url) => void b.createTab(url, true)}
+                />
+
+                <div className="dt-toolbar">
+                  <span className="dt-toolbar-label">
+                    Summary
+                  </span>
+                  <button
+                    className="dt-copy-btn"
+                    onClick={() => copy(JSON.stringify(meta, null, 2), 'json')}
+                    title="Copy all page metadata as JSON"
+                  >
+                    <Icon name={copied === 'json' ? 'check' : 'copy'} size={13} />
+                    {copied === 'json' ? 'Copied' : 'Copy JSON'}
+                  </button>
+                </div>
+
                 <div className="dt-rows">
                   <Row label="Description" value={meta.description} />
                   <Row label="Canonical" value={meta.canonical} mono />

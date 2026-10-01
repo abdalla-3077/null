@@ -3,7 +3,7 @@ import type { SensitiveCategory } from './sensitive-sites';
 export type TabLayout = 'top' | 'side' | 'bottom';
 export type ThemeName = 'blue' | 'red' | 'neutral';
 export type AppearanceMode = 'light' | 'dark';
-export type WallpaperId = 'none' | 'coastal-dusk' | 'alpine-fog' | 'desert-night' | 'forest-canopy' | 'arctic-glow' | 'city-rain';
+export type WallpaperId = 'none' | 'coastal-dusk' | 'alpine-fog' | 'desert-night' | 'forest-canopy' | 'arctic-glow' | 'city-rain' | 'lavender-dusk' | 'fjord-morning' | 'canyon-glow' | 'aurora-mesh' | 'ink-tide' | 'nebula-drift';
 export type SearchEngineId = 'google' | 'bing' | 'duckduckgo';
 export type DeviceProfileId =
   | 'windows'
@@ -28,6 +28,7 @@ export interface TabInfo {
   pinned: boolean;
   certError: boolean;
   active: boolean;
+  zoom: number;
 }
 
 export type TabSecurity = 'secure' | 'insecure' | 'warning' | 'internal' | 'unknown';
@@ -89,6 +90,15 @@ export interface TabDevInfo {
   fetchedAt: number;
 }
 
+export interface SiteImageResult {
+  url: string;
+  ok: boolean;
+  dataUrl: string;
+  contentType: string;
+  bytes: number;
+  error: string;
+}
+
 export type SiteResourceKind = 'robots' | 'sitemap';
 
 export interface SiteResourceResult {
@@ -131,7 +141,7 @@ export interface DownloadItem {
   savePath: string;
   receivedBytes: number;
   totalBytes: number;
-  state: 'progressing' | 'completed' | 'cancelled' | 'interrupted';
+  state: 'progressing' | 'paused' | 'completed' | 'cancelled' | 'interrupted';
   startTime: number;
 }
 
@@ -139,6 +149,40 @@ export interface FindResult {
   activeMatchOrdinal: number;
   matches: number;
   tabId: string;
+}
+
+export interface BookmarkItem {
+  id: string;
+  url: string;
+  title: string;
+  favicon: string;
+  addedAt: number;
+}
+
+export interface HistoryEntry {
+  id: string;
+  url: string;
+  title: string;
+  favicon: string;
+  visitedAt: number;
+}
+
+export type PermissionKind =
+  | 'media'
+  | 'geolocation'
+  | 'notifications'
+  | 'clipboard-read'
+  | 'midi'
+  | 'display-capture';
+
+export interface PermissionRequestInfo {
+  id: string;
+  tabId: string;
+  origin: string;
+  host: string;
+  kind: PermissionKind;
+  label: string;
+  detail: string;
 }
 
 export interface InsecureWarningInfo {
@@ -183,6 +227,8 @@ export interface AppSettings {
   downloadLocation: string;
   askWhereToSave: boolean;
   restoreClosedTabs: boolean;
+  showBookmarkBar: boolean;
+  httpsOnly: boolean;
   warnOnInsecureHttp: boolean;
   warnSensitiveSites: boolean;
   warnPorn: boolean;
@@ -219,6 +265,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   downloadLocation: '',
   askWhereToSave: true,
   restoreClosedTabs: true,
+  showBookmarkBar: true,
+  httpsOnly: true,
   warnOnInsecureHttp: true,
   warnSensitiveSites: true,
   warnPorn: true,

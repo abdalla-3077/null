@@ -2,10 +2,13 @@ import { create } from 'zustand';
 import type {
   TabInfo,
   AppSettings,
+  BookmarkItem,
   CertificateWarningInfo,
   DownloadItem,
   FindResult,
+  HistoryEntry,
   InsecureWarningInfo,
+  PermissionRequestInfo,
   SensitiveWarningInfo,
 } from '../shared/types';
 import { DEFAULT_SETTINGS } from '../shared/types';
@@ -70,9 +73,13 @@ interface UIState {
   settingsOpen: boolean;
   emergencyConfirmOpen: boolean;
   devToolsOpen: boolean;
+  historyOpen: boolean;
+  paletteOpen: boolean;
+  paletteMode: 'all' | 'tabs';
   insecureWarning: InsecureWarningInfo | null;
   certWarning: CertificateWarningInfo | null;
   sensitiveWarning: SensitiveWarningInfo | null;
+  permission: PermissionRequestInfo | null;
   ctxMenu: {
     x: number;
     y: number;
@@ -89,9 +96,29 @@ export const useUIStore = create<UIState>((set) => ({
   settingsOpen: false,
   emergencyConfirmOpen: false,
   devToolsOpen: false,
+  historyOpen: false,
+  paletteOpen: false,
+  paletteMode: 'all',
   insecureWarning: null,
   certWarning: null,
   sensitiveWarning: null,
+  permission: null,
   ctxMenu: null,
   set: (p) => set(p),
+}));
+
+interface SessionState {
+  bookmarks: BookmarkItem[];
+  history: HistoryEntry[];
+  setBookmarks: (b: BookmarkItem[]) => void;
+  setHistory: (h: HistoryEntry[]) => void;
+  isBookmarked: (url: string) => boolean;
+}
+
+export const useSessionStore = create<SessionState>((set, get) => ({
+  bookmarks: [],
+  history: [],
+  setBookmarks: (bookmarks) => set({ bookmarks }),
+  setHistory: (history) => set({ history }),
+  isBookmarked: (url) => get().bookmarks.some((b) => b.url === url),
 }));

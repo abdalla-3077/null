@@ -1,10 +1,11 @@
 import { net } from 'electron';
-import { DEVICE_PROFILES } from '../shared/config';
+import { DEVICE_PROFILES, isLocalNetworkInput } from '../shared/config';
 import { getSetting } from './settings-store';
 import { getTabRecord } from './tab-manager';
 import type {
   PageMeta,
   PageMetaTag,
+  SiteImageResult,
   SiteResourceKind,
   SiteResourceResult,
   TabDevInfo,
@@ -12,6 +13,7 @@ import type {
 } from '../shared/types';
 
 const MAX_BODY = 200_000;
+const MAX_IMAGE_BYTES = 3_000_000;
 const FETCH_TIMEOUT = 12_000;
 const META_TIMEOUT = 4_000;
 
@@ -392,6 +394,75 @@ export async function fetchSiteResource(
     sitemapUrls: discovered.length > 0 ? discovered : [target],
     fetchedAt: Date.now(),
   };
+}
+
+export async function fetchSiteImage(rawUrl: string | null, referer?: string | null): Promise<SiteImageResult | null> {
+  if (!rawUrl) return null;
+
+  if (/^data:image\//i.test(rawUrl)) {
+    const semi = rawUrl.indexOf(';');
+    const contentType = semi > 5 ? rawUrl.slice(5, semi) : 'image';
+    return { url: 'inline data URL', ok: true, dataUrl: rawUrl, contentType, bytes: rawUrl.length, error: '' };
+  }
+
+  const fail = (error: string, contentType = '', host = ''): SiteImageResult => ({
+    url: host ? `Blocked host (${host})` : rawUrl,
+    ok: false,
+    dataUrl: '',
+    contentType,
+    bytes: 0,
+    error,
+  });
+
+  if (!/^https?:/i.test(rawUrl)) return fail('Preview is available for http(s) images only.');
+
+  // The URL comes from the page's own metadata, so refuse to probe the local
+  // machine or network: that would let a page scan behind the firewall.
+  let imageHost = '';
+  try {
+    imageHost = new URL(rawUrl).host;
+  } catch {
+    return fail('Invalid image URL.');
+  }
+  if (isLocalNetworkInput(imageHost)) {
+    return fail('Preview is not available for local network images.', '', imageHost);
+  }
+
+  const profile = DEVICE_PROFILES[getSetting('deviceProfile')] ?? DEVICE_PROFILES.linux;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT);
+
+  const headers: Record<string, string> = {
+    'user-agent': profile.userAgent,
+    accept: 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+    'accept-language': 'en-US,en;q=0.9',
+  };
+  if (referer && /^https?:/i.test(referer)) headers.referer = referer;
+
+  try {
+    const res = await net.fetch(rawUrl, { signal: controller.signal, redirect: 'follow', headers });
+    const contentType = (res.headers.get('content-type') ?? '').split(';')[0].trim();
+    if (!res.ok) return fail(`HTTP ${res.status}`, contentType);
+    if (!/^image\//i.test(contentType)) return fail(`Not an image (${contentType || 'unknown type'}).`, contentType);
+
+    const buffer = Buffer.from(await res.arrayBuffer());
+    if (buffer.byteLength > MAX_IMAGE_BYTES) {
+      return fail(`Image is ${(buffer.byteLength / 1_048_576).toFixed(1)} MB — too large to preview.`, contentType);
+    }
+    return {
+      url: rawUrl,
+      ok: true,
+      dataUrl: `data:${contentType};base64,${buffer.toString('base64')}`,
+      contentType,
+      bytes: buffer.byteLength,
+      error: '',
+    };
+  } catch (err) {
+    const aborted = err instanceof Error && err.name === 'AbortError';
+    return fail(aborted ? 'Image request timed out.' : err instanceof Error ? err.message : 'Image request failed.');
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export function setTabDevToolsOpen(tabId: string, open: boolean): void {

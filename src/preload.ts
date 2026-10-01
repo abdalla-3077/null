@@ -1,11 +1,15 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type {
   AppSettings,
+  BookmarkItem,
   CertificateWarningInfo,
   DownloadItem,
   FindResult,
+  HistoryEntry,
   InsecureWarningInfo,
+  PermissionRequestInfo,
   SensitiveWarningInfo,
+  SiteImageResult,
   SiteResourceKind,
   SiteResourceResult,
   TabDevInfo,
@@ -39,6 +43,23 @@ const browser = {
   reorderTabs: (ids: string[]): Promise<void> => ipcRenderer.invoke('browser:reorder-tabs', ids),
   getTabs: (): Promise<{ tabs: TabInfo[]; activeId: string | null }> =>
     ipcRenderer.invoke('browser:get-tabs'),
+  zoomIn: (id: string): Promise<void> => ipcRenderer.invoke('browser:zoom-in', id),
+  zoomOut: (id: string): Promise<void> => ipcRenderer.invoke('browser:zoom-out', id),
+  resetZoom: (id: string): Promise<void> => ipcRenderer.invoke('browser:zoom-reset', id),
+  setZoom: (id: string, factor: number): Promise<void> =>
+    ipcRenderer.invoke('browser:zoom-set', id, factor),
+  getBookmarks: (): Promise<BookmarkItem[]> => ipcRenderer.invoke('bookmarks:get'),
+  toggleBookmark: (url: string, title: string, favicon: string): Promise<boolean> =>
+    ipcRenderer.invoke('bookmarks:toggle', url, title, favicon),
+  addBookmark: (url: string, title: string, favicon: string): Promise<BookmarkItem[]> =>
+    ipcRenderer.invoke('bookmarks:add', url, title, favicon),
+  removeBookmark: (id: string): Promise<void> => ipcRenderer.invoke('bookmarks:remove', id),
+  clearBookmarks: (): Promise<void> => ipcRenderer.invoke('bookmarks:clear'),
+  getHistory: (): Promise<HistoryEntry[]> => ipcRenderer.invoke('history:get'),
+  removeHistory: (id: string): Promise<void> => ipcRenderer.invoke('history:remove', id),
+  clearHistory: (): Promise<void> => ipcRenderer.invoke('history:clear'),
+  respondPermission: (id: string, allow: boolean): Promise<void> =>
+    ipcRenderer.invoke('browser:permission-respond', id, allow),
   devInfo: (id: string | null): Promise<TabDevInfo | null> =>
     ipcRenderer.invoke('browser:dev-info', id),
   devResource: (
@@ -49,6 +70,8 @@ const browser = {
     ipcRenderer.invoke('browser:dev-resource', id, kind, url),
   setDevToolsOpen: (id: string, open: boolean): Promise<void> =>
     ipcRenderer.invoke('browser:dev-devtools', id, open),
+  devImage: (url: string | null, referer?: string | null): Promise<SiteImageResult | null> =>
+    ipcRenderer.invoke('browser:dev-image', url, referer),
   find: (id: string, q: string, fwd?: boolean, mc?: boolean): Promise<void> =>
     ipcRenderer.invoke('browser:find', id, q, fwd, mc),
   findStop: (id: string): Promise<void> => ipcRenderer.invoke('browser:find-stop', id),
@@ -76,6 +99,11 @@ const browser = {
   getDownloads: (): Promise<DownloadItem[]> => ipcRenderer.invoke('browser:downloads'),
   downloadReveal: (p: string): Promise<void> => ipcRenderer.invoke('browser:download-reveal', p),
   downloadOpen: (p: string): Promise<void> => ipcRenderer.invoke('browser:download-open', p),
+  downloadPause: (id: string): Promise<void> => ipcRenderer.invoke('browser:download-pause', id),
+  downloadResume: (id: string): Promise<void> => ipcRenderer.invoke('browser:download-resume', id),
+  downloadCancel: (id: string): Promise<void> => ipcRenderer.invoke('browser:download-cancel', id),
+  downloadRemove: (id: string): Promise<void> => ipcRenderer.invoke('browser:download-remove', id),
+  downloadClearFinished: (): Promise<void> => ipcRenderer.invoke('browser:download-clear-finished'),
   rendererReady: (): void => ipcRenderer.send('renderer:ready'),
   onTabsChanged: (cb: (tabs: TabInfo[], activeId: string | null) => void): (() => void) => {
     const fn = (_e: unknown, tabs: TabInfo[], activeId: string | null) => cb(tabs, activeId);
@@ -106,6 +134,21 @@ const browser = {
     const fn = (_e: unknown, d: DownloadItem[]) => cb(d);
     ipcRenderer.on('browser:downloads-changed', fn as never);
     return () => ipcRenderer.removeListener('browser:downloads-changed', fn as never);
+  },
+  onBookmarksChanged: (cb: (b: BookmarkItem[]) => void): (() => void) => {
+    const fn = (_e: unknown, b: BookmarkItem[]) => cb(b);
+    ipcRenderer.on('browser:bookmarks-changed', fn as never);
+    return () => ipcRenderer.removeListener('browser:bookmarks-changed', fn as never);
+  },
+  onHistoryChanged: (cb: (h: HistoryEntry[]) => void): (() => void) => {
+    const fn = (_e: unknown, h: HistoryEntry[]) => cb(h);
+    ipcRenderer.on('browser:history-changed', fn as never);
+    return () => ipcRenderer.removeListener('browser:history-changed', fn as never);
+  },
+  onPermissionRequest: (cb: (r: PermissionRequestInfo) => void): (() => void) => {
+    const fn = (_e: unknown, r: PermissionRequestInfo) => cb(r);
+    ipcRenderer.on('browser:permission-request', fn as never);
+    return () => ipcRenderer.removeListener('browser:permission-request', fn as never);
   },
   onFindResult: (cb: (r: FindResult) => void): (() => void) => {
     const fn = (_e: unknown, r: FindResult) => cb(r);
@@ -141,7 +184,6 @@ const browser = {
       'shortcut:prev-tab',
       'shortcut:find',
       'shortcut:clear-data',
-      'shortcut:escape',
     ];
     const fns = channels.map((c) => {
       const fn = (): void => cb(c);

@@ -2,7 +2,7 @@ import { WebContentsView, session, shell } from 'electron';
 import { randomUUID } from 'node:crypto';
 import { getMainWindow, getContentBounds, isModalOpen } from './window-manager';
 import { getAllSettings, getSetting, setSetting } from './settings-store';
-import { DEVICE_PROFILES, NULL_NEWTAB, isInsecureHttpUrl, resolveInputToUrl } from '../shared/config';
+import { DEVICE_PROFILES, NULL_NEWTAB, isInsecureHttpUrl, isLocalNetworkInput, resolveInputToUrl } from '../shared/config';
 import {
   classifySensitiveUrl,
   isHostTrusted,
@@ -10,6 +10,8 @@ import {
   type SensitiveCategory,
 } from '../shared/sensitive-sites';
 import { getNewtabUrl, writeInternalPages } from './null-protocol';
+import { recordVisit, updateVisitMeta, updateBookmarkMeta } from './session-store';
+import { attachPermissionHandlers } from './permissions';
 import type { SearchEngineId, TabInfo } from '../shared/types';
 
 interface TabRecord {
@@ -25,6 +27,11 @@ interface TabRecord {
   muted: boolean;
   pinned: boolean;
   certError: boolean;
+  zoom: number;
+  /** Plain-HTTP URL we upgraded from, retried if the HTTPS attempt fails. */
+  upgradeFallback: string | null;
+  /** HTTP URLs whose HTTPS attempt already failed, so we stop retrying them. */
+  failedUpgrades: Set<string>;
   order: number;
 }
 
@@ -85,6 +92,50 @@ function hostOf(url: string): string {
   }
 }
 
+const ZOOM_STEPS = [0.25, 0.33, 0.5, 0.67, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 5];
+
+function clampZoom(factor: number): number {
+  if (!Number.isFinite(factor)) return 1;
+  return Math.min(5, Math.max(0.25, factor));
+}
+
+/** Rewrites plain HTTP to HTTPS when HTTPS-only mode is on (local networks excluded). */
+function upgradeUrl(url: string): string {
+  if (!isInsecureHttpUrl(url) || !getSetting('httpsOnly')) return url;
+  try {
+    if (isLocalNetworkInput(new URL(url).host)) return url;
+  } catch {
+    return url;
+  }
+  return `https://${url.slice('http://'.length)}`;
+}
+
+export function setZoom(id: string, factor: number): void {
+  const record = tabs.get(id);
+  if (!record) return;
+  record.zoom = clampZoom(factor);
+  record.view.webContents.setZoomFactor(record.zoom);
+  broadcastTabs();
+}
+
+export function zoomIn(id: string): void {
+  const record = tabs.get(id);
+  if (!record) return;
+  const next = ZOOM_STEPS.find((step) => step > record.zoom + 1e-6) ?? ZOOM_STEPS[ZOOM_STEPS.length - 1];
+  setZoom(id, next);
+}
+
+export function zoomOut(id: string): void {
+  const record = tabs.get(id);
+  if (!record) return;
+  const lower = [...ZOOM_STEPS].reverse().find((step) => step < record.zoom - 1e-6) ?? ZOOM_STEPS[0];
+  setZoom(id, lower);
+}
+
+export function resetZoom(id: string): void {
+  setZoom(id, 1);
+}
+
 export function handleCertificateError(
   event: Electron.Event,
   webContents: Electron.WebContents,
@@ -140,11 +191,19 @@ function snapshot(r: TabRecord): TabInfo {
     pinned: r.pinned,
     certError: r.certError,
     active: r.id === activeTabId,
+    zoom: r.zoom,
   };
 }
 
+/** Pinned tabs float to the front, otherwise tabs keep their manual order. */
+function orderedTabs(): TabRecord[] {
+  return [...tabs.values()].sort(
+    (a, b) => Number(b.pinned) - Number(a.pinned) || a.order - b.order,
+  );
+}
+
 export function broadcastTabs(): void {
-  const list = [...tabs.values()].sort((a, b) => a.order - b.order).map(snapshot);
+  const list = orderedTabs().map(snapshot);
   emit('tabs:changed', list, activeTabId);
 }
 
@@ -163,10 +222,15 @@ function attachViewEvents(record: TabRecord): void {
     record.loading = false;
     record.canGoBack = wc.navigationHistory.canGoBack();
     record.canGoForward = wc.navigationHistory.canGoForward();
+    if (/^https?:\/\//i.test(record.url)) {
+      recordVisit(record.url, record.title, record.favicon);
+      updateBookmarkMeta(record.url, record.title, record.favicon);
+    }
     broadcastTabs();
   });
   wc.on('did-navigate', (_e, url) => {
     record.url = url.startsWith('file://') && url.includes('null-pages') ? NULL_NEWTAB : url;
+    record.upgradeFallback = null;
     record.certError = approvedCertHosts.has(hostOf(url));
     record.canGoBack = wc.navigationHistory.canGoBack();
     record.canGoForward = wc.navigationHistory.canGoForward();
@@ -178,17 +242,29 @@ function attachViewEvents(record: TabRecord): void {
   });
   wc.on('page-title-updated', (_e, title) => {
     record.title = title || record.url;
+    updateVisitMeta(record.url, record.title, record.favicon);
+    updateBookmarkMeta(record.url, record.title, record.favicon);
     broadcastTabs();
   });
   wc.on('page-favicon-updated', (_e, favicons) => {
     if (favicons.length > 0) {
       record.favicon = favicons[0];
+      updateVisitMeta(record.url, record.title, record.favicon);
+      updateBookmarkMeta(record.url, record.title, record.favicon);
       broadcastTabs();
     }
   });
   wc.on('did-fail-load', (_e, code, desc, validatedURL, isMainFrame) => {
     if (!isMainFrame || code === -3) return;
     if (validatedURL.startsWith('null://') || validatedURL.startsWith('file://')) return;
+    const failedHost = hostOf(validatedURL);
+    if (record.upgradeFallback && failedHost && /^https:/i.test(validatedURL) && failedHost === hostOf(record.upgradeFallback)) {
+      const fallback = record.upgradeFallback;
+      record.upgradeFallback = null;
+      record.failedUpgrades.add(fallback);
+      navigateTab(record.id, fallback, { skipUpgrade: true });
+      return;
+    }
     record.loading = false;
     record.title = 'Failed to load';
     broadcastTabs();
@@ -205,7 +281,7 @@ function attachViewEvents(record: TabRecord): void {
     record.audible = true;
     broadcastTabs();
   });
-  wc.on('media-paused-playing' as never, () => {
+  wc.on('media-paused', () => {
     record.audible = false;
     broadcastTabs();
   });
@@ -228,6 +304,11 @@ function attachViewEvents(record: TabRecord): void {
       if (to) navigateTab(record.id, to);
       return;
     }
+    if (upgradeUrl(url) !== url && !record.failedUpgrades.has(url)) {
+      e.preventDefault();
+      navigateTab(record.id, url);
+      return;
+    }
     if (shouldWarnInsecure(url, record.url)) {
       e.preventDefault();
       requestInsecureWarning(record.id, url);
@@ -241,6 +322,11 @@ function attachViewEvents(record: TabRecord): void {
   });
   wc.on('will-redirect', (e, url) => {
     if (url.startsWith('null://') || url.startsWith('file://')) return;
+    if (upgradeUrl(url) !== url && !record.failedUpgrades.has(url)) {
+      e.preventDefault();
+      navigateTab(record.id, url);
+      return;
+    }
     const sensitive = shouldWarnSensitive(url);
     if (sensitive) {
       e.preventDefault();
@@ -296,6 +382,12 @@ export function createTab(
         ? resolveInputToUrl(rawUrl, getSetting('searchEngine'))
         : rawUrl
       : NULL_NEWTAB;
+  let upgradeFallback: string | null = null;
+  const upgradedInitial = upgradeUrl(initialUrl);
+  if (upgradedInitial !== initialUrl) {
+    upgradeFallback = initialUrl;
+    initialUrl = upgradedInitial;
+  }
   let gatedInsecureUrl: string | null = null;
   if (!options?.bypassInsecureWarning && shouldWarnInsecure(initialUrl, '')) {
     gatedInsecureUrl = initialUrl;
@@ -331,6 +423,7 @@ export function createTab(
   view.webContents.setBackgroundThrottling(false);
   applyUserAgentToView(view);
   lazyAttachDownload(view.webContents.session);
+  attachPermissionHandlers(view.webContents.session, id);
   const record: TabRecord = {
     id,
     view,
@@ -344,6 +437,9 @@ export function createTab(
     muted: false,
     pinned: false,
     certError: false,
+    zoom: 1,
+    upgradeFallback,
+    failedUpgrades: new Set<string>(),
     order: orderCounter++,
   };
   tabs.set(id, record);
@@ -394,7 +490,7 @@ export function getActiveTabId(): string | null {
 }
 
 export function getTabs(): TabInfo[] {
-  return [...tabs.values()].sort((a, b) => a.order - b.order).map(snapshot);
+  return orderedTabs().map(snapshot);
 }
 
 export function closeTab(id: string): void {
@@ -419,7 +515,7 @@ export function closeTab(id: string): void {
   }
   tabs.delete(id);
   if (activeTabId === id) {
-    const remaining = [...tabs.values()].sort((a, b) => a.order - b.order);
+    const remaining = orderedTabs();
     activeTabId = remaining.length > 0 ? remaining[remaining.length - 1].id : null;
   }
   if (tabs.size === 0) {
@@ -436,20 +532,26 @@ export function reopenClosedTab(): string | null {
   return createTab(last.url, true);
 }
 
-export function navigateTab(id: string, input: string): void {
+export function navigateTab(id: string, input: string, options?: { skipUpgrade?: boolean }): void {
   const record = tabs.get(id);
   if (!record) return;
-  const url = resolveInputToUrl(input, getSetting('searchEngine'));
-  const sensitive = shouldWarnSensitive(url);
+  const resolved = resolveInputToUrl(input, getSetting('searchEngine'));
+  const skipUpgrade = options?.skipUpgrade || record.failedUpgrades.has(resolved);
+  const upgraded = skipUpgrade ? resolved : upgradeUrl(resolved);
+  // Any earlier fallback is superseded; arm a new one only once we actually load,
+  // so a declined warning cannot leave a stale HTTP fallback behind.
+  record.upgradeFallback = null;
+  const sensitive = shouldWarnSensitive(upgraded);
   if (sensitive) {
-    requestSensitiveWarning(id, url, sensitive);
+    requestSensitiveWarning(id, upgraded, sensitive);
     return;
   }
-  if (shouldWarnInsecure(url, record.url, true)) {
-    requestInsecureWarning(id, url);
+  if (shouldWarnInsecure(upgraded, record.url, true)) {
+    requestInsecureWarning(id, upgraded);
     return;
   }
-  void record.view.webContents.loadURL(url).catch(() => undefined);
+  if (upgraded !== resolved) record.upgradeFallback = resolved;
+  void record.view.webContents.loadURL(upgraded).catch(() => undefined);
 }
 
 export function navigateTabConfirmed(id: string, url: string): void {
@@ -512,7 +614,7 @@ export function stopTab(id: string): void {
 export function goHome(id: string): void {
   const record = tabs.get(id);
   if (!record) return;
-  void record.view.webContents.loadURL(getSetting('homepage')).catch(() => undefined);
+  void record.view.webContents.loadURL(upgradeUrl(getSetting('homepage'))).catch(() => undefined);
 }
 
 const ENGINE_ORDER: SearchEngineId[] = ['google', 'bing', 'duckduckgo'];
@@ -570,11 +672,23 @@ export function togglePin(id: string): void {
 }
 
 export function reorderTabs(orderedIds: string[]): void {
-  orderedIds.forEach((id, idx) => {
-    const r = tabs.get(id);
-    if (r) r.order = idx;
+  // The renderer sends ids in display order (pinned-first), while `order` only
+  // ranks within each group — so track the two groups separately instead of
+  // blindly numbering the display order.
+  const positions = new Map(orderedIds.map((id, idx) => [id, idx]));
+  const pinned = [...tabs.values()]
+    .filter((r) => r.pinned)
+    .sort((a, b) => (positions.get(a.id) ?? a.order) - (positions.get(b.id) ?? b.order));
+  const unpinned = [...tabs.values()]
+    .filter((r) => !r.pinned)
+    .sort((a, b) => (positions.get(a.id) ?? a.order) - (positions.get(b.id) ?? b.order));
+  pinned.forEach((r, idx) => {
+    r.order = idx;
   });
-  orderCounter = orderedIds.length;
+  unpinned.forEach((r, idx) => {
+    r.order = idx;
+  });
+  orderCounter = Math.max(pinned.length, unpinned.length, orderedIds.length);
   broadcastTabs();
 }
 
