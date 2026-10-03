@@ -1,8 +1,13 @@
 import { WebContentsView, session, shell } from 'electron';
 import { randomUUID } from 'node:crypto';
-import { getMainWindow, getContentBounds, isModalOpen } from './window-manager';
+import {
+  getMainWindow,
+  getContentBounds,
+  isModalOpen,
+  setPageFullscreen,
+} from './window-manager';
 import { getAllSettings, getSetting, setSetting } from './settings-store';
-import { DEVICE_PROFILES, NULL_NEWTAB, isInsecureHttpUrl, isLocalNetworkInput, resolveInputToUrl } from '../shared/config';
+import { DEVICE_PROFILES, NULL_NEWTAB, SEARCH_ENGINES, isInsecureHttpUrl, isLocalNetworkInput, resolveInputToUrl, translateUrl, isTranslatedUrl } from '../shared/config';
 import {
   classifySensitiveUrl,
   isHostTrusted,
@@ -28,6 +33,11 @@ interface TabRecord {
   pinned: boolean;
   certError: boolean;
   zoom: number;
+  translated: boolean;
+  originalUrl: string;
+  darkKey: string | null;
+  siteKey: string | null;
+  siteKind: 'youtube' | 'google' | null;
   /** Plain-HTTP URL we upgraded from, retried if the HTTPS attempt fails. */
   upgradeFallback: string | null;
   /** HTTP URLs whose HTTPS attempt already failed, so we stop retrying them. */
@@ -92,12 +102,140 @@ function hostOf(url: string): string {
   }
 }
 
-const ZOOM_STEPS = [0.25, 0.33, 0.5, 0.67, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 5];
+function targetUrlOf(record: TabRecord): string {
+  try {
+    return record.view.webContents.getURL() || record.url;
+  } catch {
+    return record.url;
+  }
+}
+
+function siteKindForUrl(url: string): 'youtube' | 'google' | null {
+  let host = '';
+  try {
+    host = new URL(url).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+  if (!host) return null;
+  if (host === 'youtube.com' || host.endsWith('.youtube.com') || host === 'youtu.be' || host.endsWith('.youtu.be') || host === 'youtube-nocookie.com' || host.endsWith('.youtube-nocookie.com')) {
+    return 'youtube';
+  }
+  if (host === 'google.com' || host.endsWith('.google.com') || host.startsWith('google.') || host.endsWith('.google.co') || host.endsWith('.google.co.uk') || host.endsWith('.google.de') || host.endsWith('.google.fr')) {
+    return 'google';
+  }
+  return null;
+}
+
+const YOUTUBE_THEME_CSS = `:root{--null-yt-accent:#8b5cf6;--null-yt-accent-soft:rgba(139,92,246,.16)}
+html:not([dark]){--yt-spec-base-background:#0e0e16!important;--yt-spec-raised-background:#16161f!important;--yt-spec-menu-background:#16161f!important;--yt-spec-text-primary:#ededf5!important;--yt-spec-text-secondary:#a7a7b8!important;--yt-spec-icon-inactive:#a7a7b8!important;--yt-spec-brand-background-solid:#0e0e16!important;--yt-spec-brand-background-primary:rgba(14,14,22,.9)!important}
+ytd-app{background:#0e0e16!important;color:#ededf5!important}
+#masthead,ytd-masthead{background:#101018!important;border-bottom:1px solid rgba(139,92,246,.22)!important}
+ytd-masthead #search-input,ytd-searchbox{--ytd-searchbox-background:#16161f!important;--ytd-searchbox-text-color:#ededf5!important}
+ytd-searchbox input{background:#16161f!important;color:#ededf5!important;border-color:rgba(139,92,246,.28)!important}
+#chips-wrapper,ytd-feed-filter-chip-bar-renderer{background:#101018!important;border-bottom:1px solid rgba(139,92,246,.14)!important}
+yt-chip-cloud-chip-renderer yt-formatted-string,.ytChipShapeButtonReset{background:#1a1a26!important;color:#cfcfe0!important}
+yt-chip-cloud-chip-renderer[chip-style][selected] yt-formatted-string,.ytChipShapeButtonReset[aria-pressed="true"]{background:#8b5cf6!important;color:#fff!important}
+ytd-rich-item-renderer #dismissible{background:#16161f!important;border:1px solid rgba(139,92,246,.14)!important;border-radius:14px!important;overflow:hidden!important}
+ytd-rich-item-renderer #video-title{color:#f2f1fa!important}
+ytd-video-meta-block #metadata-line,ytd-video-meta-block #byline-container{color:#a7a7b8!important}
+ytd-guide-renderer,ytd-mini-guide-renderer{background:#101018!important}
+ytd-guide-entry-renderer[active] .title{color:#c4b5fd!important}
+ytd-guide-entry-renderer:hover{background:rgba(139,92,246,.12)!important}
+ytd-comment-thread-renderer,ytd-comment-renderer #content-text{color:#ededf5!important}
+ytd-button-renderer.style-primary yt-button-shape button,.ytd-subscribe-button-renderer button{background:#8b5cf6!important;color:#fff!important;border-radius:999px!important}
+ytd-toggle-button-renderer yt-button-shape button[aria-pressed="true"]{background:rgba(139,92,246,.2)!important;color:#d8ccff!important}
+#progress.ytd-progress-bar{color:#8b5cf6!important;background:rgba(139,92,246,.22)!important}
+.ytp-progress-list{background:rgba(139,92,246,.28)!important}
+.ytp-play-progress{background:#8b5cf6!important}
+.ytp-scrubber-button{background:#c4b5fd!important}
+::-webkit-scrollbar{background:#101018!important}
+::-webkit-scrollbar-thumb{background:rgba(139,92,246,.42)!important;border-radius:8px!important}`;
+
+const GOOGLE_THEME_CSS = `:root{--null-g-accent:#8b5cf6;--null-g-accent-soft:rgba(139,92,246,.14);color-scheme:dark!important}
+html,body{background:#0e0e16!important;color:#ededf5!important}
+#viewport,.main,.L3eUgb,.o3j99{background:#0e0e16!important}
+.gb_B,.gb_E,.gb_F,.gb_g{background:transparent!important}
+.gb_A,.gb_B,.gb_E{color:#cfcfe0!important}
+.RNNXgb,.SDkEP,.a4bIc,.emca,.YacQv,.sbfc{background:#16161f!important;border:1px solid rgba(139,92,246,.28)!important;box-shadow:none!important}
+.RNNXgb:hover,.SDkEP:hover{border-color:#8b5cf6!important;box-shadow:0 0 0 3px rgba(139,92,246,.14)!important}
+.gLFyf,.gsfi,.gLFyfgsfi,.Pbiozm{color:#ededf5!important;background:transparent!important}
+.XN9DLe,.AITR5c,.PbadQb,.Umvnrc{background:#1a1a26!important;color:#cfcfe0!important;border-color:rgba(139,92,246,.2)!important}
+.gNO89b,.RNmpXc,.Tg7LZd,.CCg58b,.iblpc,.jhp input,.FPdoLc input,.lJ9FBc input,.uU7dJb input,input[value="Google Search"],input[value="بحث Google"]{background:#1a1a26!important;color:#ededf5!important;border:1px solid rgba(139,92,246,.28)!important;border-radius:8px!important}
+.gNO89b:hover,.RNmpXc:hover,.Tg7LZd:hover,.iblpc:hover,.jhp input:hover,.FPdoLc input:hover,.lJ9FBc input:hover{background:#23232f!important;border-color:#8b5cf6!important;box-shadow:none!important}
+#fbar,.f6F9Be,footer,.Fx4vi,.Q8LRLc,#fsl,.EeV5n,.c93Gbe,.fbar,.IDVnvc{background:#101018!important;border-color:rgba(139,92,246,.16)!important;color:#a7a7b8!important}
+#fbar a,.Fx4vi a,.Q8LRLc a,#fsl a,.pHiOh,.S3BnEe,.uU7dJb{color:#a7a7b8!important}
+#fbar a:hover,.Fx4vi a:hover,.Q8LRLc a:hover{color:#d8ccff!important}
+#hdtb,#top_nav,.sfbg,.appbar,.LHJvCe{background:#101018!important;border-color:rgba(139,92,246,.2)!important}
+.g,.MjjYud,.N54PNb,.hlcw0c,.VwiC3b,.st{color:#cfcfe0!important}
+.LC20lb,.DKV0Md,.l,.yuRUbf a h3{color:#c4b5fd!important}
+cite,.iUh30,.qLRx3b{color:#7dd3a8!important}
+.fP1Qef{background:#16161f!important;border-color:rgba(139,92,246,.18)!important}
+.hb2Smf,.ab_button,a.fl,.KxwPGc a{color:#a7a7b8!important}
+.mn-dwn-arw{border-color:#a7a7b8 transparent!important}
+::-webkit-scrollbar{background:#101018!important}
+::-webkit-scrollbar-thumb{background:rgba(139,92,246,.42)!important;border-radius:8px!important}`;
+
+function siteThemeCss(kind: 'youtube' | 'google'): string {
+  return kind === 'youtube' ? YOUTUBE_THEME_CSS : GOOGLE_THEME_CSS;
+}
+
+function siteThemeEnabled(kind: 'youtube' | 'google'): boolean {
+  try {
+    return getSetting(kind === 'youtube' ? 'youtubeTheme' : 'googleTheme') === true;
+  } catch {
+    return false;
+  }
+}
+
+function clearSiteTheme(record: TabRecord): void {
+  if (record.siteKey) {
+    const key = record.siteKey;
+    record.siteKey = null;
+    record.siteKind = null;
+    void record.view.webContents.removeInsertedCSS(key).catch(() => undefined);
+  } else {
+    record.siteKind = null;
+  }
+}
+
+function applySiteTheme(record: TabRecord, url?: string): void {
+  const live = url ?? targetUrlOf(record);
+  if (!/^https?:\/\//i.test(live) || isTranslatedUrl(live)) {
+    clearSiteTheme(record);
+    return;
+  }
+  const kind = siteKindForUrl(live);
+  if (!kind || !siteThemeEnabled(kind)) {
+    clearSiteTheme(record);
+    return;
+  }
+  if (record.siteKey && record.siteKind === kind) return;
+  clearSiteTheme(record);
+  void record.view.webContents.insertCSS(siteThemeCss(kind)).then((key) => {
+    if (siteKindForUrl(targetUrlOf(record)) !== kind) {
+      void record.view.webContents.removeInsertedCSS(key).catch(() => undefined);
+      return;
+    }
+    record.siteKey = key;
+    record.siteKind = kind;
+  }).catch(() => undefined);
+}
+
+export function applySiteThemesToAllTabs(): void {
+  for (const r of tabs.values()) {
+    r.siteKey = null;
+    r.siteKind = null;
+    applySiteTheme(r);
+  }
+}
 
 function clampZoom(factor: number): number {
   if (!Number.isFinite(factor)) return 1;
   return Math.min(5, Math.max(0.25, factor));
 }
+
+const ZOOM_STEPS = [0.25, 0.33, 0.5, 0.67, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 5];
 
 /** Rewrites plain HTTP to HTTPS when HTTPS-only mode is on (local networks excluded). */
 function upgradeUrl(url: string): string {
@@ -192,6 +330,8 @@ function snapshot(r: TabRecord): TabInfo {
     certError: r.certError,
     active: r.id === activeTabId,
     zoom: r.zoom,
+    translated: r.translated,
+    originalUrl: r.originalUrl,
   };
 }
 
@@ -205,6 +345,86 @@ function orderedTabs(): TabRecord[] {
 export function broadcastTabs(): void {
   const list = orderedTabs().map(snapshot);
   emit('tabs:changed', list, activeTabId);
+}
+
+const DARK_READER_CSS = `html{filter:invert(1) hue-rotate(180deg)!important;background:#111!important}
+img,video,picture,canvas,svg,[style*="background-image"],[role="img"]{filter:invert(1) hue-rotate(180deg)!important}
+::-webkit-scrollbar{background:#1a1a1e!important}`;
+
+function darkReaderEnabled(): boolean {
+  try {
+    return getSetting('darkReader') === true;
+  } catch {
+    return false;
+  }
+}
+
+function applyDarkReader(record: TabRecord): void {
+  const wc = record.view.webContents;
+  const kind = siteKindForUrl(targetUrlOf(record));
+  if (kind) return;
+  if (!darkReaderEnabled()) {
+    if (record.darkKey) {
+      void wc.removeInsertedCSS(record.darkKey).catch(() => undefined);
+      record.darkKey = null;
+    }
+    return;
+  }
+  let url = '';
+  try {
+    url = wc.getURL();
+  } catch {
+    url = record.url;
+  }
+  if (!/^https?:\/\//i.test(url) || isTranslatedUrl(url)) return;
+  if (record.darkKey) return;
+  void wc.insertCSS(DARK_READER_CSS).then((key) => {
+    record.darkKey = key;
+  }).catch(() => undefined);
+}
+
+export function applyDarkReaderToAllTabs(): void {
+  for (const r of tabs.values()) {
+    r.darkKey = null;
+    applyDarkReader(r);
+  }
+}
+
+export function translateTab(id: string, lang?: string): boolean {
+  const record = tabs.get(id);
+  if (!record) return false;
+  const target = lang ?? (getSetting('translateLanguage') as string) ?? 'en';
+  let current = record.url;
+  try {
+    current = record.view.webContents.getURL();
+  } catch {
+    /* fall back to record url */
+  }
+  if (!current || isTranslatedUrl(current)) return false;
+  const translated = translateUrl(current, target);
+  if (!translated) return false;
+  record.originalUrl = current;
+  record.translated = true;
+  record.darkKey = null;
+  record.siteKey = null;
+  record.siteKind = null;
+  void record.view.webContents.loadURL(translated).catch(() => undefined);
+  broadcastTabs();
+  return true;
+}
+
+export function restoreOriginalTab(id: string): boolean {
+  const record = tabs.get(id);
+  if (!record || !record.translated || !record.originalUrl) return false;
+  const back = record.originalUrl;
+  record.translated = false;
+  record.originalUrl = '';
+  record.darkKey = null;
+  record.siteKey = null;
+  record.siteKind = null;
+  void record.view.webContents.loadURL(back).catch(() => undefined);
+  broadcastTabs();
+  return true;
 }
 
 function trackPartionOf(view: WebContentsView): string {
@@ -222,6 +442,9 @@ function attachViewEvents(record: TabRecord): void {
     record.loading = false;
     record.canGoBack = wc.navigationHistory.canGoBack();
     record.canGoForward = wc.navigationHistory.canGoForward();
+    record.darkKey = null;
+    applyDarkReader(record);
+    applySiteTheme(record);
     if (/^https?:\/\//i.test(record.url)) {
       recordVisit(record.url, record.title, record.favicon);
       updateBookmarkMeta(record.url, record.title, record.favicon);
@@ -230,6 +453,10 @@ function attachViewEvents(record: TabRecord): void {
   });
   wc.on('did-navigate', (_e, url) => {
     record.url = url.startsWith('file://') && url.includes('null-pages') ? NULL_NEWTAB : url;
+    record.translated = isTranslatedUrl(url);
+    if (!record.translated) record.originalUrl = '';
+    record.darkKey = null;
+    applySiteTheme(record, url);
     record.upgradeFallback = null;
     record.certError = approvedCertHosts.has(hostOf(url));
     record.canGoBack = wc.navigationHistory.canGoBack();
@@ -238,6 +465,7 @@ function attachViewEvents(record: TabRecord): void {
   });
   wc.on('did-navigate-in-page', (_e, url) => {
     record.url = url.startsWith('file://') && url.includes('null-pages') ? NULL_NEWTAB : url;
+    applySiteTheme(record, url);
     broadcastTabs();
   });
   wc.on('page-title-updated', (_e, title) => {
@@ -365,6 +593,12 @@ function attachViewEvents(record: TabRecord): void {
       mediaType: params.mediaType,
     });
   });
+  wc.on('enter-html-full-screen', () => {
+    setPageFullscreen(true);
+  });
+  wc.on('leave-html-full-screen', () => {
+    setPageFullscreen(false);
+  });
 }
 
 export function createTab(
@@ -438,6 +672,11 @@ export function createTab(
     pinned: false,
     certError: false,
     zoom: 1,
+    translated: false,
+    originalUrl: '',
+    darkKey: null,
+    siteKey: null,
+    siteKind: null,
     upgradeFallback,
     failedUpgrades: new Set<string>(),
     order: orderCounter++,
@@ -538,9 +777,12 @@ export function navigateTab(id: string, input: string, options?: { skipUpgrade?:
   const resolved = resolveInputToUrl(input, getSetting('searchEngine'));
   const skipUpgrade = options?.skipUpgrade || record.failedUpgrades.has(resolved);
   const upgraded = skipUpgrade ? resolved : upgradeUrl(resolved);
-  // Any earlier fallback is superseded; arm a new one only once we actually load,
-  // so a declined warning cannot leave a stale HTTP fallback behind.
   record.upgradeFallback = null;
+  record.translated = isTranslatedUrl(upgraded);
+  if (!record.translated) record.originalUrl = '';
+  record.darkKey = null;
+  record.siteKey = null;
+  record.siteKind = null;
   const sensitive = shouldWarnSensitive(upgraded);
   if (sensitive) {
     requestSensitiveWarning(id, upgraded, sensitive);
@@ -557,12 +799,18 @@ export function navigateTab(id: string, input: string, options?: { skipUpgrade?:
 export function navigateTabConfirmed(id: string, url: string): void {
   const record = tabs.get(id);
   if (!record) return;
+  record.darkKey = null;
+  record.siteKey = null;
+  record.siteKind = null;
   void record.view.webContents.loadURL(url).catch(() => undefined);
 }
 
 export function navigateSensitiveConfirmed(id: string, url: string, trustHost: boolean): void {
   const record = tabs.get(id);
   if (!record) return;
+  record.darkKey = null;
+  record.siteKey = null;
+  record.siteKind = null;
   if (trustHost) {
     const host = trustHostForUrl(url);
     if (host) {
@@ -617,7 +865,7 @@ export function goHome(id: string): void {
   void record.view.webContents.loadURL(upgradeUrl(getSetting('homepage'))).catch(() => undefined);
 }
 
-const ENGINE_ORDER: SearchEngineId[] = ['google', 'bing', 'duckduckgo'];
+const ENGINE_ORDER: SearchEngineId[] = Object.keys(SEARCH_ENGINES) as SearchEngineId[];
 
 export function applySearchEngine(id: string, exceptTabId?: string): SearchEngineId | null {
   const next = ENGINE_ORDER.find((engine) => engine === id);

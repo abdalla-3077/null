@@ -4,7 +4,7 @@ export type TabLayout = 'top' | 'side' | 'bottom';
 export type ThemeName = 'blue' | 'red' | 'neutral';
 export type AppearanceMode = 'light' | 'dark';
 export type WallpaperId = 'none' | 'coastal-dusk' | 'alpine-fog' | 'desert-night' | 'forest-canopy' | 'arctic-glow' | 'city-rain' | 'lavender-dusk' | 'fjord-morning' | 'canyon-glow' | 'aurora-mesh' | 'ink-tide' | 'nebula-drift';
-export type SearchEngineId = 'google' | 'bing' | 'duckduckgo';
+export type SearchEngineId = 'google' | 'bing' | 'duckduckgo' | 'brave' | 'startpage' | 'qwant' | 'ecosia' | 'mojeek';
 export type DeviceProfileId =
   | 'windows'
   | 'macos'
@@ -29,6 +29,8 @@ export interface TabInfo {
   certError: boolean;
   active: boolean;
   zoom: number;
+  translated: boolean;
+  originalUrl: string;
 }
 
 export type TabSecurity = 'secure' | 'insecure' | 'warning' | 'internal' | 'unknown';
@@ -115,10 +117,14 @@ export interface SiteResourceResult {
   fetchedAt: number;
 }
 
+export type SearchPrivacy = 'max' | 'high' | 'medium' | 'low';
+
 export interface SearchEngine {
   id: SearchEngineId;
   name: string;
   searchUrl: string;
+  privacy: SearchPrivacy;
+  privacyNote: string;
 }
 
 export interface AIProvider {
@@ -217,6 +223,13 @@ export interface AppSettings {
   homepage: string;
   newTabWallpaper: WallpaperId;
   newTabShowAI: boolean;
+  darkReader: boolean;
+  youtubeTheme: boolean;
+  googleTheme: boolean;
+  translateLanguage: string;
+  widgetCity: string;
+  widgetWeather: boolean;
+  widgetCrypto: boolean;
   aiProviders: AIProvider[];
   aiPanelWidth: number;
   aiPanelOpen: boolean;
@@ -235,6 +248,7 @@ export interface AppSettings {
   warnGambling: boolean;
   warnAlcohol: boolean;
   trustedSensitiveHosts: string[];
+  googlePrivacyBanner: boolean;
   devMode: boolean;
 }
 
@@ -255,6 +269,13 @@ export const DEFAULT_SETTINGS: AppSettings = {
   homepage: 'null://newtab',
   newTabWallpaper: 'coastal-dusk',
   newTabShowAI: true,
+  darkReader: false,
+  youtubeTheme: true,
+  googleTheme: true,
+  translateLanguage: 'en',
+  widgetCity: '',
+  widgetWeather: true,
+  widgetCrypto: true,
   aiProviders: DEFAULT_AI_PROVIDERS,
   aiPanelWidth: 360,
   aiPanelOpen: false,
@@ -273,5 +294,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
   warnGambling: true,
   warnAlcohol: true,
   trustedSensitiveHosts: [],
+  googlePrivacyBanner: true,
   devMode: false,
 };

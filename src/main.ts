@@ -73,6 +73,9 @@ function buildAppMenu(): void {
       submenu: [
         { label: 'Reload', accelerator: 'CmdOrCtrl+R', click: () => send('shortcut:reload') },
         { label: 'Hard Reload', accelerator: 'CmdOrCtrl+Shift+R', click: () => send('shortcut:hard-reload') },
+        { type: 'separator' },
+        { label: 'Toggle Full Screen', accelerator: 'F11', click: () => send('shortcut:fullscreen') },
+        { type: 'separator' },
         { label: 'Find in Page', accelerator: 'CmdOrCtrl+F', click: () => send('shortcut:find') },
         { label: 'Focus Address Bar', accelerator: 'CmdOrCtrl+L', click: () => send('shortcut:focus-address') },
         { label: 'Next Tab', accelerator: 'CmdOrCtrl+Tab', click: () => send('shortcut:next-tab') },

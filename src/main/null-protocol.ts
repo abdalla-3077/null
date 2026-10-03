@@ -3,7 +3,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { getSetting } from './settings-store';
 import { SITE_ICONS } from './site-icon-data';
-import { SEARCH_ENGINES } from '../shared/config';
+import { SEARCH_ENGINES, SEARCH_ENGINE_ORDER, PRIVACY_LABEL } from '../shared/config';
 import type { SearchEngineId, WallpaperId } from '../shared/types';
 
 function escapeHtml(s: string): string {
@@ -75,12 +75,26 @@ const ENGINE_ICONS: Record<SearchEngineId, string> = {
   google: SITE_ICONS['google.png'],
   bing: SITE_ICONS['bing.png'],
   duckduckgo: SITE_ICONS['duckduckgo.png'],
+  brave: SITE_ICONS['brave.svg'],
+  startpage: SITE_ICONS['startpage.svg'],
+  qwant: SITE_ICONS['qwant.svg'],
+  ecosia: SITE_ICONS['ecosia.svg'],
+  mojeek: SITE_ICONS['mojeek.svg'],
+};
+
+const CRYPTO_ICONS: Record<string, string> = {
+  BTC: SITE_ICONS['btc.svg'],
+  ETH: SITE_ICONS['eth.svg'],
+  SOL: SITE_ICONS['sol.svg'],
 };
 
 export interface NewTabOptions {
   providers?: { name: string; url: string }[];
   showAI?: boolean;
   wallpaper?: WallpaperId;
+  widgetCity?: string;
+  widgetWeather?: boolean;
+  widgetCrypto?: boolean;
 }
 
 const WALLPAPERS: { id: WallpaperId; name: string }[] = [
@@ -119,16 +133,19 @@ function currentNewTabOptions(): NewTabOptions {
       })),
       showAI: getSetting('newTabShowAI') !== false,
       wallpaper: WALLPAPERS.some((item) => item.id === wallpaper) ? wallpaper : 'coastal-dusk',
+      widgetCity: String(getSetting('widgetCity') ?? ''),
+      widgetWeather: getSetting('widgetWeather') !== false,
+      widgetCrypto: getSetting('widgetCrypto') !== false,
     };
   } catch {
-    return { providers: [], showAI: false, wallpaper: 'coastal-dusk' };
+    return { providers: [], showAI: false, wallpaper: 'coastal-dusk', widgetCity: '', widgetWeather: true, widgetCrypto: true };
   }
 }
 
 function currentEngine(): SearchEngineId {
   try {
     const e = getSetting('searchEngine');
-    if (e === 'bing' || e === 'duckduckgo') return e;
+    if (e && SEARCH_ENGINES[e as SearchEngineId]) return e as SearchEngineId;
     return 'google';
   } catch {
     return 'google';
@@ -169,10 +186,11 @@ export function newTabHtml(theme?: unknown, appearance?: unknown, opts?: NewTabO
     (tile) =>
       `<a class="site" href="null://go?to=${encodeURIComponent(tile.url)}" title="${escapeHtml(tile.name)} — ${escapeHtml(tile.url)}"><span class="site-icon"><img src="${tile.icon}" alt="" draggable="false" loading="eager"></span><span class="site-name">${escapeHtml(tile.name)}</span></a>`,
   ).join('');
-  const engineMenu = (Object.keys(SEARCH_ENGINES) as SearchEngineId[])
+  const engineMenu = SEARCH_ENGINE_ORDER
     .map((id) => {
       const active = id === engine;
-      return `<button type="button" role="option" data-id="${id}" aria-selected="${active}"><img src="${ENGINE_ICONS[id]}" alt=""><span class="nm">${escapeHtml(SEARCH_ENGINES[id].name)}</span><span class="tick" aria-hidden="true">✓</span></button>`;
+      const info = SEARCH_ENGINES[id];
+      return `<button type="button" role="option" data-id="${id}" aria-selected="${active}"><img src="${ENGINE_ICONS[id]}" alt=""><span class="nm">${escapeHtml(info.name)}<small>${escapeHtml(PRIVACY_LABEL[info.privacy])}</small></span><span class="tick" aria-hidden="true">✓</span></button>`;
     })
     .join('');
   const aiRow =
@@ -182,6 +200,21 @@ export function newTabHtml(theme?: unknown, appearance?: unknown, opts?: NewTabO
           .map((pr) => `<a href="null://go?to=${encodeURIComponent(pr.url)}">${escapeHtml(pr.name)}</a>`)
           .join('')}</nav>`
       : '';
+  const widgetCity = (o.widgetCity ?? '').trim();
+  const showWeather = o.widgetWeather !== false;
+  const showCrypto = o.widgetCrypto !== false;
+  const showDash = showWeather || showCrypto;
+  const dashHtml = showDash
+    ? `<section class="dash" aria-label="Today at a glance">${
+        showWeather
+          ? `<div class="wcard" aria-label="Weather"><h3>Weather</h3><div class="wtemp" id="wxTemp">--</div><div class="wsub" id="wxSub">Loading…</div><div class="wmeta" id="wxMeta" hidden></div></div>`
+          : ''
+      }${
+        showCrypto
+          ? `<div class="wcard" aria-label="Crypto prices"><h3>Crypto</h3><div class="crypto" id="cx"><div class="werr">Loading prices…</div></div></div>`
+          : ''
+      }</section>`
+    : '';
   return `<!doctype html><html><head><meta charset="utf-8"><meta name="color-scheme" content="${a}"><title>New Tab</title>
 <style>
 *{box-sizing:border-box}
@@ -221,7 +254,8 @@ form.search{display:flex;gap:10px;align-items:stretch}
 .engmenu [role=option]{display:flex;align-items:center;gap:10px;width:100%;padding:9px 10px;border:0;border-radius:9px;background:transparent;color:${homeText};font:inherit;font-size:13px;font-weight:600;cursor:pointer;text-align:left}
 .engmenu [role=option]:hover,.engmenu [role=option]:focus-visible{background:${homeHover}}
 .engmenu [role=option] img{width:16px;height:16px;border-radius:50%;background:#fff;display:block;flex:none}
-.engmenu .nm{flex:1}
+.engmenu .nm{flex:1;display:flex;flex-direction:column;gap:1px}
+.engmenu .nm small{font-size:10.5px;font-weight:400;color:${homeMuted}}
 .engmenu .tick{opacity:0;font-size:12px;color:${homeFocus}}
 .engmenu [aria-selected=true] .tick{opacity:.9}
 .clear{flex:none;display:flex;align-items:center;justify-content:center;width:26px;height:26px;margin-right:2px;border:0;border-radius:50%;background:transparent;color:${homeMuted};font:inherit;font-size:14px;line-height:1;cursor:pointer}
@@ -240,7 +274,22 @@ form.search{display:flex;gap:10px;align-items:stretch}
 .site-name{font-size:11.5px;font-weight:600;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis}
 .foot{display:flex;align-items:center;justify-content:center;gap:8px;padding:16px;border-top:1px solid ${homeBorder};color:${homeMuted};font-size:12px;text-align:center}
 .foot .dot{width:5px;height:5px;border-radius:50%;background:${wallpaperImage ? '#fff' : p.accent};flex:none}
-@media(max-width:700px){main{padding:8vh 22px 6vh}.bar{padding:16px 20px}.sites{grid-template-columns:repeat(3,minmax(0,1fr));margin-top:22px}.greet{font-size:34px}.go{padding:0 16px}.clock{gap:6px}}
+.dash{display:grid;grid-template-columns:1fr 1.4fr;gap:10px;margin:26px 0 0}
+.wcard{border:1px solid ${homeBorder};border-radius:14px;background:${homeSurface};backdrop-filter:blur(18px);padding:14px 16px;min-width:0}
+.wcard h3{margin:0 0 8px;font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:${homeMuted}}
+.wtemp{font-size:30px;font-weight:600;letter-spacing:-.03em;line-height:1;color:${homeText};font-variant-numeric:tabular-nums}
+.wsub{margin-top:6px;font-size:12.5px;color:${homeText}}
+.wmeta{display:flex;gap:12px;margin-top:8px;font-size:11.5px;color:${homeMuted}}
+.crypto{display:flex;flex-direction:column;gap:6px}
+.cxrow{display:flex;align-items:center;gap:10px;padding:7px 4px;border-radius:9px}
+.cxrow+.cxrow{border-top:1px solid ${homeBorder}}
+.cxicon{width:20px;height:20px;border-radius:50%;flex:none;display:block}
+.cxcoin{font-size:12.5px;font-weight:700;color:${homeText};min-width:38px}
+.cxprice{flex:1;font-size:13px;font-weight:600;color:${homeText};text-align:right;font-variant-numeric:tabular-nums}
+.cxchg{font-size:11.5px;font-weight:700;min-width:62px;text-align:right;font-variant-numeric:tabular-nums}
+.cxchg.up{color:#3dd68c}.cxchg.down{color:#ff6369}
+.werr{font-size:12px;color:${homeMuted}}
+@media(max-width:700px){main{padding:8vh 22px 6vh}.bar{padding:16px 20px}.sites{grid-template-columns:repeat(3,minmax(0,1fr));margin-top:22px}.greet{font-size:34px}.go{padding:0 16px}.clock{gap:6px}.dash{grid-template-columns:1fr}}
 @media(max-width:420px){.clock #date{display:none}.eng{padding:8px 4px}.eng #engName{max-width:70px;overflow:hidden;text-overflow:ellipsis}.hints{line-height:1.9}}
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
 </style></head><body>
@@ -250,6 +299,7 @@ form.search{display:flex;gap:10px;align-items:stretch}
 <p class="sub">This window forgets everything when it closes.</p>
 <form class="search" id="f"><div class="inp"><div class="engwrap"><button type="button" class="eng" id="eng" aria-haspopup="listbox" aria-expanded="false" aria-label="Search engine: ${engineName}. Opens engine menu."><img id="engIcon" src="${engineIcon}" alt=""><span id="engName">${engineName}</span><span class="caret" aria-hidden="true">▾</span></button><div class="engmenu" id="engMenu" role="listbox" aria-label="Choose search engine" hidden>${engineMenu}</div></div><input id="q" placeholder="Search ${engineName} or enter address" autocomplete="off" spellcheck="false" enterkeyhint="go" aria-label="Search ${engineName} or enter address"><button type="button" class="clear" id="clear" aria-label="Clear search" hidden>✕</button></div><button class="go" type="submit">Go</button></form>
 <p class="hints"><kbd>${mod}</kbd> + <kbd>L</kbd> address &nbsp;&middot;&nbsp; <kbd>${mod}</kbd> + <kbd>T</kbd> new tab &nbsp;&middot;&nbsp; <kbd>${mod}</kbd> + <kbd>F</kbd> find</p>
+${dashHtml}
 ${aiRow}
 <nav class="sites" aria-label="Quick links">${tiles}</nav>
 </div></main>
@@ -275,6 +325,31 @@ f.addEventListener('submit',e=>{e.preventDefault();const v=q.value.trim();if(!v)
 const c=document.getElementById('clock'),d=document.getElementById('date'),g=document.getElementById('greet');
 function tick(){try{const n=new Date();c.textContent=n.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});d.textContent=n.toLocaleDateString([],{weekday:'short',month:'short',day:'numeric'});const h=n.getHours();g.textContent=h<5?'Good night.':h<12?'Good morning.':h<18?'Good afternoon.':'Good evening.';}catch{}}
 tick();setInterval(tick,30000);
+const NULL_CITY=${JSON.stringify(widgetCity)};
+const NULL_WX=${showWeather ? '1' : '0'},NULL_CX=${showCrypto ? '1' : '0'};
+const NULL_ICONS=${JSON.stringify(CRYPTO_ICONS)};
+function cxIcon(label){return NULL_ICONS[label]||'';}
+function wxCode(code){code=Number(code);if(code===0)return 'Clear sky';if(code===1)return 'Mostly clear';if(code===2)return 'Partly cloudy';if(code===3)return 'Overcast';if(code===45||code===48)return 'Fog';if(code>=51&&code<=57)return 'Drizzle';if(code>=61&&code<=67)return 'Rain';if(code>=71&&code<=77)return 'Snow';if(code>=80&&code<=82)return 'Showers';if(code===95||code===96||code===99)return 'Thunderstorm';return 'Cloudy';}
+async function loadWx(){if(!NULL_WX)return;const t=document.getElementById('wxTemp'),s=document.getElementById('wxSub'),m=document.getElementById('wxMeta');if(!t||!s||!m)return;
+if(!NULL_CITY){s.textContent='Set a city in Settings → General.';return;}
+try{const g=await(await fetch('https://geocoding-api.open-meteo.com/v1/search?name='+encodeURIComponent(NULL_CITY)+'&count=1&language=en&format=json')).json();
+const loc=g&&g.results&&g.results[0];if(!loc){s.textContent='City not found. Check Settings → General.';return;}
+const w=await(await fetch('https://api.open-meteo.com/v1/forecast?latitude='+loc.latitude+'&longitude='+loc.longitude+'&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m&timezone=auto')).json();
+const cur=w&&w.current;if(!cur){s.textContent='Weather unavailable.';return;}
+t.textContent=Math.round(cur.temperature_2m)+'°';s.textContent=wxCode(cur.weather_code)+' · '+(loc.name||NULL_CITY)+(loc.country?' '+loc.country:'');m.hidden=false;m.innerHTML='<span>Humidity '+cur.relative_humidity_2m+'%</span><span>Wind '+Math.round(cur.wind_speed_10m)+' km/h</span>';}catch{s.textContent='Weather unavailable offline.';}}
+async function loadCx(){if(!NULL_CX)return;const box=document.getElementById('cx');if(!box)return;
+try{const coins=[['BTCUSDT','BTC'],['ETHUSDT','ETH'],['SOLUSDT','SOL']];let rows='';
+for(const [sym,label] of coins){const r=await(await fetch('https://api.binance.com/api/v3/ticker/24hr?symbol='+sym)).json();const px=Number(r.lastPrice),chg=Number(r.priceChangePercent);
+const fmt=px>=1000?px.toLocaleString('en-US',{maximumFractionDigits:0}):px>=10?px.toLocaleString('en-US',{maximumFractionDigits:2}):String(px);
+rows+='<div class="cxrow"><img class="cxicon" src="'+cxIcon(label)+'" alt=""><span class="cxcoin">'+label+'</span><span class="cxprice">$'+fmt+'</span><span class="cxchg '+(chg>=0?'up':'down')+'">'+(chg>=0?'+':'')+chg.toFixed(2)+'%</span></div>';}
+if(!rows)throw new Error('empty');box.innerHTML=rows;}catch{
+try{const ids=['bitcoin','ethereum','solana'];const q=ids.join(',');const r=await(await fetch('https://api.coingecko.com/api/v3/simple/price?ids='+q+'&vs_currencies=usd&include_24hr_change=true')).json();
+const labels={bitcoin:'BTC',ethereum:'ETH',solana:'SOL'};let rows='';
+for(const id of ids){if(!r[id])continue;const px=Number(r[id].usd),chg=Number(r[id].usd_24h_change||0);
+const fmt=px>=1000?px.toLocaleString('en-US',{maximumFractionDigits:0}):px>=10?px.toLocaleString('en-US',{maximumFractionDigits:2}):String(px);
+rows+='<div class="cxrow"><img class="cxicon" src="'+cxIcon(labels[id])+'" alt=""><span class="cxcoin">'+labels[id]+'</span><span class="cxprice">$'+fmt+'</span><span class="cxchg '+(chg>=0?'up':'down')+'">'+(chg>=0?'+':'')+chg.toFixed(2)+'%</span></div>';}
+if(!rows)throw new Error('empty');box.innerHTML=rows;}catch{box.innerHTML='<div class="werr">Prices unavailable offline.</div>';}}}
+loadWx();loadCx();setInterval(()=>{loadWx();loadCx();},600000);
 </script></body></html>`;
 }
 

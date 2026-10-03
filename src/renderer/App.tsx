@@ -16,7 +16,9 @@ import { BookmarkBar } from './components/BookmarkBar';
 import { HistoryDialog } from './components/HistoryDialog';
 import { CommandPalette } from './components/CommandPalette';
 import { PermissionPrompt } from './components/PermissionPrompt';
+import { TranslateDialog } from './components/TranslateDialog';
 import { BrandMark } from './components/BrandMark';
+import { EnginePrivacyBanner } from './components/EnginePrivacyBanner';
 import { useTabStore, useSettingsStore, useDownloadStore, useFindStore, useUIStore, useSessionStore } from './stores';
 
 function useChromeReporter(
@@ -25,6 +27,7 @@ function useChromeReporter(
   sideRef: React.RefObject<HTMLDivElement | null>,
   active: boolean,
   showBookmarkBar: boolean,
+  fullscreen: boolean,
 ): void {
   const layout = useSettingsStore((s) => s.settings.tabLayout);
   React.useEffect(() => {
@@ -33,6 +36,10 @@ function useChromeReporter(
     // view over the whole window and swallows every mouse click.
     if (!active) return;
     const report = (): void => {
+      if (fullscreen) {
+        void window.nullBrowser.setChrome({ top: 0, bottom: 0, side: 0 }).catch(() => undefined);
+        return;
+      }
       const top = topRef.current?.offsetHeight ?? 0;
       const bottom = bottomRef.current?.offsetHeight ?? 0;
       const side = sideRef.current?.offsetWidth ?? 0;
@@ -58,7 +65,7 @@ function useChromeReporter(
       ro?.disconnect();
       window.removeEventListener('resize', report);
     };
-  }, [active, layout, showBookmarkBar, topRef, bottomRef, sideRef]);
+  }, [active, layout, showBookmarkBar, fullscreen, topRef, bottomRef, sideRef]);
 }
 
 export function App(): React.ReactElement {
@@ -72,13 +79,15 @@ export function App(): React.ReactElement {
   const devToolsOpen = useUIStore((s) => s.devToolsOpen);
   const historyOpen = useUIStore((s) => s.historyOpen);
   const paletteOpen = useUIStore((s) => s.paletteOpen);
+  const translateOpen = useUIStore((s) => s.translateOpen);
   const permission = useUIStore((s) => s.permission);
   const downloadsOpen = useDownloadStore((s) => s.open);
   const topRef = React.useRef<HTMLDivElement>(null);
   const bottomRef = React.useRef<HTMLDivElement>(null);
   const sideRef = React.useRef<HTMLDivElement>(null);
   const addressRef = React.useRef<HTMLInputElement>(null);
-  useChromeReporter(topRef, bottomRef, sideRef, ready, settings.showBookmarkBar);
+  const fullscreen = useUIStore((s) => s.fullscreen);
+  useChromeReporter(topRef, bottomRef, sideRef, ready, settings.showBookmarkBar, fullscreen);
 
   React.useEffect(() => {
     document.documentElement.dataset.theme = settings.theme;
@@ -93,6 +102,7 @@ export function App(): React.ReactElement {
       devToolsOpen ||
       historyOpen ||
       paletteOpen ||
+      translateOpen ||
       !!permission ||
       !!insecureWarning ||
       !!certWarning ||
@@ -100,10 +110,11 @@ export function App(): React.ReactElement {
       downloadsOpen ||
       !settings.setupDone;
     void window.nullBrowser.setModalOpen(modalOpen).catch(() => undefined);
-  }, [settingsOpen, emergencyOpen, devToolsOpen, historyOpen, paletteOpen, permission, insecureWarning, certWarning, sensitiveWarning, downloadsOpen, settings.setupDone]);
+  }, [settingsOpen, emergencyOpen, devToolsOpen, historyOpen, paletteOpen, translateOpen, permission, insecureWarning, certWarning, sensitiveWarning, downloadsOpen, settings.setupDone]);
 
   React.useEffect(() => {
     let offTabs: () => void = () => undefined;
+    let offFullscreen: () => void = () => undefined;
     let offSettings: () => void = () => undefined;
     let offDl: () => void = () => undefined;
     let offFind: () => void = () => undefined;
@@ -121,6 +132,7 @@ export function App(): React.ReactElement {
       useSettingsStore.getState().setReady(true);
     });
     offTabs = b.onTabsChanged((tabs, activeId) => useTabStore.getState().setTabs(tabs, activeId));
+    offFullscreen = b.onFullscreenChanged((value) => useUIStore.getState().set({ fullscreen: value }));
     offSettings = b.onSettingsChanged((s) => useSettingsStore.getState().setSettings(s));
     offDl = b.onDownloadsChanged((d) => useDownloadStore.getState().setDownloads(d));
     offFind = b.onFindResult((r) => {
@@ -137,6 +149,7 @@ export function App(): React.ReactElement {
     offHistory = b.onHistoryChanged((list) => useSessionStore.getState().setHistory(list));
     offPermission = b.onPermissionRequest((r) => useUIStore.getState().set({ permission: r }));
     b.rendererReady();
+    void b.getFullscreen().then((value) => useUIStore.getState().set({ fullscreen: !!value })).catch(() => undefined);
     void b.getTabs().then(({ tabs, activeId }) => useTabStore.getState().setTabs(tabs, activeId));
     void b.getBookmarks().then((list) => useSessionStore.getState().setBookmarks(list)).catch(() => undefined);
     void b.getHistory().then((list) => useSessionStore.getState().setHistory(list)).catch(() => undefined);
@@ -191,13 +204,19 @@ export function App(): React.ReactElement {
       } else if (mod && e.key === '0') {
         e.preventDefault();
         if (activeId) void b.resetZoom(activeId);
+      } else if (e.key === 'F11') {
+        e.preventDefault();
+        void b.getFullscreen().then((value) => b.setWindowFullscreen(!value)).catch(() => undefined);
       } else if (mod && e.key === 'Tab' && !e.shiftKey) {
         e.preventDefault();
         cycleTab(1);
       } else if (e.key === 'Escape') {
         const ui = useUIStore.getState();
-        if (ui.ctxMenu) ui.set({ ctxMenu: null });
+        if (ui.fullscreen) {
+          void b.setWindowFullscreen(false).catch(() => undefined);
+        } else if (ui.ctxMenu) ui.set({ ctxMenu: null });
         else if (ui.paletteOpen) ui.set({ paletteOpen: false });
+        else if (ui.translateOpen) ui.set({ translateOpen: false });
         else if (ui.permission) {
           void b.respondPermission(ui.permission.id, false);
           ui.set({ permission: null });
@@ -232,6 +251,7 @@ export function App(): React.ReactElement {
     void onIpc;
     return () => {
       offTabs();
+      offFullscreen();
       offSettings();
       offDl();
       offFind();
@@ -261,6 +281,7 @@ export function App(): React.ReactElement {
         addressRef.current?.select();
       } else if (c === 'shortcut:reload' && activeId) void b.reload(activeId);
       else if (c === 'shortcut:hard-reload' && activeId) void b.reload(activeId, true);
+      else if (c === 'shortcut:fullscreen') void b.getFullscreen().then((value) => b.setWindowFullscreen(!value)).catch(() => undefined);
       else if (c === 'shortcut:find') useFindStore.getState().set({ open: true });
       else if (c === 'shortcut:clear-data') void b.clearSession();
       else if ((c === 'shortcut:next-tab' || c === 'shortcut:prev-tab') && st.tabs.length > 1) {
@@ -282,6 +303,7 @@ export function App(): React.ReactElement {
         addressRef.current?.select();
       } else if (c === 'shortcut:reload' && activeId) void b.reload(activeId);
       else if (c === 'shortcut:hard-reload' && activeId) void b.reload(activeId, true);
+      else if (c === 'shortcut:fullscreen') void b.getFullscreen().then((value) => b.setWindowFullscreen(!value)).catch(() => undefined);
       else if (c === 'shortcut:find') useFindStore.getState().set({ open: true });
       else if (c === 'shortcut:clear-data') void b.clearSession();
       else if ((c === 'shortcut:next-tab' || c === 'shortcut:prev-tab') && st.tabs.length > 1) {
@@ -315,37 +337,56 @@ export function App(): React.ReactElement {
   const narrow = typeof window !== 'undefined' && window.innerWidth < 760;
 
   return (
-    <div className={`browser layout-${layout}`} data-theme={settings.theme} data-mode={settings.appearance}>
-      {layout === 'side' && (
+    <div className={`browser layout-${layout}${fullscreen ? ' is-fullscreen' : ''}`} data-theme={settings.theme} data-mode={settings.appearance}>
+      {layout === 'side' && !fullscreen && (
         <aside ref={sideRef} className={`side-tabs${narrow ? ' collapsed' : ''}`} aria-label="Sidebar tabs">
           <SideStrip collapsed={narrow} />
         </aside>
       )}
       <div className="main-col" style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, position: 'relative' }}>
-        {(layout === 'top' || layout === 'side') && (
+        {!fullscreen && (layout === 'top' || layout === 'side') && (
           <div ref={topRef} className="chrome-top">
             {layout === 'top' && <TopStrip />}
             <Toolbar addressRef={addressRef} />
             <AddressBar addressRef={addressRef} />
+            <EnginePrivacyBanner />
             {settings.showBookmarkBar && <BookmarkBar />}
             <FindBar />
           </div>
         )}
-        {layout === 'bottom' && (
+        {!fullscreen && layout === 'bottom' && (
           <div ref={topRef} className="chrome-top">
             <Toolbar addressRef={addressRef} />
             <AddressBar addressRef={addressRef} />
+            <EnginePrivacyBanner />
             {settings.showBookmarkBar && <BookmarkBar />}
             <FindBar />
           </div>
         )}
         <div style={{ flex: 1 }} />
-        {layout === 'bottom' && (
+        {!fullscreen && layout === 'bottom' && (
           <div ref={bottomRef} className="chrome-bottom">
             <BottomStrip />
           </div>
         )}
       </div>
+      {fullscreen && (
+        <button
+          className="fullscreen-exit"
+          aria-label="Exit full screen (Esc)"
+          title="Exit full screen (Esc)"
+          onClick={() => void window.nullBrowser.setWindowFullscreen(false).catch(() => undefined)}
+        >
+          <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M8 3v3a2 2 0 0 1-2 2H3" />
+            <path d="M21 8h-3a2 2 0 0 1-2-2V3" />
+            <path d="M3 16h3a2 2 0 0 1 2 2v3" />
+            <path d="M16 21v-3a2 2 0 0 1 2-2h3" />
+          </svg>
+          <span>Exit full screen</span>
+          <kbd className="kbd">Esc</kbd>
+        </button>
+      )}
       {!settings.setupDone && <SetupWizard />}
       {settingsOpen && <SettingsPage />}
       {emergencyOpen && <EmergencyConfirm />}
@@ -355,6 +396,7 @@ export function App(): React.ReactElement {
       {devToolsOpen && <DevToolsDialog />}
       {historyOpen && <HistoryDialog />}
       {paletteOpen && <CommandPalette />}
+      <TranslateDialog />
       {permission && <PermissionPrompt />}
       <DownloadTray />
       <ContextMenuHost />

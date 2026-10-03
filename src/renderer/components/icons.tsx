@@ -43,7 +43,9 @@ export type IconName =
   | 'mic'
   | 'mapPin'
   | 'screen'
-  | 'sliders';
+  | 'sliders'
+  | 'moon'
+  | 'translate';
 
 const PATHS: Record<IconName, React.ReactNode> = {
   back: (
@@ -301,6 +303,20 @@ const PATHS: Record<IconName, React.ReactNode> = {
       <circle cx="9" cy="6" r="2.2" fill="var(--surface)" />
       <circle cx="15" cy="12" r="2.2" fill="var(--surface)" />
       <circle cx="8" cy="18" r="2.2" fill="var(--surface)" />
+    </>
+  ),
+  moon: (
+    <>
+      <path d="M20 13.5A8 8 0 1 1 10.5 4a6.5 6.5 0 0 0 9.5 9.5z" />
+    </>
+  ),
+  translate: (
+    <>
+      <path d="M4 5h9" />
+      <path d="M8.5 3v2c0 3.5-2.5 6.5-5 8" />
+      <path d="M5 8.5c1 2.5 3 4.5 5.5 5.5" />
+      <path d="M13 21l4.5-10L22 21" />
+      <path d="M14.8 17h5.4" />
     </>
   ),
 };

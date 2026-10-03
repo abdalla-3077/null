@@ -1,6 +1,7 @@
 import React from 'react';
 import { useSettingsStore } from '../stores';
 import type { SearchEngineId, TabLayout, ThemeName, AppearanceMode } from '../../shared/types';
+import { SEARCH_ENGINES, SEARCH_ENGINE_ORDER, PRIVACY_LABEL } from '../../shared/config';
 import { BrandMark } from './BrandMark';
 import { Icon, type IconName } from './icons';
 
@@ -19,11 +20,11 @@ const THEME_SWATCH: Record<ThemeName, string> = {
   red: '#e5484d',
 };
 
-const ENGINES: { id: SearchEngineId; label: string; hint: string }[] = [
-  { id: 'google', label: 'Google', hint: 'google.com' },
-  { id: 'bing', label: 'Bing', hint: 'bing.com' },
-  { id: 'duckduckgo', label: 'DuckDuckGo', hint: 'Private' },
-];
+const ENGINES: { id: SearchEngineId; label: string; hint: string }[] = SEARCH_ENGINE_ORDER.map((id) => ({
+  id,
+  label: SEARCH_ENGINES[id].name,
+  hint: PRIVACY_LABEL[SEARCH_ENGINES[id].privacy],
+}));
 
 export function SetupWizard(): React.ReactElement {
   const settings = useSettingsStore((s) => s.settings);

@@ -20,6 +20,10 @@ Null is a full-featured Chromium-based browser with tab management, an AI assist
 - **Find in page** — match counts and navigation
 - **Internal pages** — `null://newtab`, `null://settings`, `null://error/*` served over a privileged custom protocol
 - **Theming** — light/dark appearance with blue, red, and neutral themes
+- **Force dark mode** — Dark Reader-style invert filter that turns any light page dark (Settings → Theme)
+- **Page translation** — toolbar button translates the current page in the same tab via Google Translate, with a one-click restore to the original; default language in Settings → Theme
+- **Smart home screen** — new-tab dashboard with a greeting, search, weather card (Open-Meteo, keyless, city set in Settings → General) and live BTC/ETH/SOL prices with coin icons (Binance with CoinGecko fallback), plus quick links and AI shortcuts
+- **Private search choice** — 8 engines (Brave, Mojeek, DuckDuckGo, Startpage, Qwant, Ecosia, Bing, Google) ranked most-private-first everywhere: setup wizard, Settings → Search with privacy notes, and the home-page engine picker
 - **Setup wizard** — first-run onboarding for layout, theme, search, and privacy defaults
 
 ## Tech Stack

@@ -48,6 +48,10 @@ const browser = {
   resetZoom: (id: string): Promise<void> => ipcRenderer.invoke('browser:zoom-reset', id),
   setZoom: (id: string, factor: number): Promise<void> =>
     ipcRenderer.invoke('browser:zoom-set', id, factor),
+  translate: (id: string, lang?: string): Promise<boolean> =>
+    ipcRenderer.invoke('browser:translate', id, lang),
+  translateRestore: (id: string): Promise<boolean> =>
+    ipcRenderer.invoke('browser:translate-restore', id),
   getBookmarks: (): Promise<BookmarkItem[]> => ipcRenderer.invoke('bookmarks:get'),
   toggleBookmark: (url: string, title: string, favicon: string): Promise<boolean> =>
     ipcRenderer.invoke('bookmarks:toggle', url, title, favicon),
@@ -86,6 +90,9 @@ const browser = {
   clearSession: (): Promise<void> => ipcRenderer.invoke('browser:clear-session'),
   emergency: (): Promise<void> => ipcRenderer.invoke('browser:emergency'),
   newWindow: (): Promise<void> => ipcRenderer.invoke('browser:new-window'),
+  getFullscreen: (): Promise<boolean> => ipcRenderer.invoke('browser:get-fullscreen'),
+  setWindowFullscreen: (fullscreen: boolean): Promise<boolean> =>
+    ipcRenderer.invoke('browser:set-window-fullscreen', !!fullscreen),
   windowAction: (a: 'min' | 'max' | 'close'): Promise<void> =>
     ipcRenderer.invoke('browser:window-action', a),
   pickDownloadDir: (): Promise<string | null> => ipcRenderer.invoke('browser:pick-download-dir'),
@@ -105,6 +112,11 @@ const browser = {
   downloadRemove: (id: string): Promise<void> => ipcRenderer.invoke('browser:download-remove', id),
   downloadClearFinished: (): Promise<void> => ipcRenderer.invoke('browser:download-clear-finished'),
   rendererReady: (): void => ipcRenderer.send('renderer:ready'),
+  onFullscreenChanged: (cb: (fullscreen: boolean) => void): (() => void) => {
+    const fn = (_e: unknown, fullscreen: boolean) => cb(!!fullscreen);
+    ipcRenderer.on('browser:fullscreen-changed', fn as never);
+    return () => ipcRenderer.removeListener('browser:fullscreen-changed', fn as never);
+  },
   onTabsChanged: (cb: (tabs: TabInfo[], activeId: string | null) => void): (() => void) => {
     const fn = (_e: unknown, tabs: TabInfo[], activeId: string | null) => cb(tabs, activeId);
     ipcRenderer.on('tabs:changed', fn as never);
@@ -180,6 +192,7 @@ const browser = {
       'shortcut:focus-address',
       'shortcut:reload',
       'shortcut:hard-reload',
+      'shortcut:fullscreen',
       'shortcut:next-tab',
       'shortcut:prev-tab',
       'shortcut:find',
