@@ -1,5 +1,5 @@
 import { WebContentsView, session } from 'electron';
-import { getMainWindow, getAiPanelBounds, isModalOpen } from './window-manager';
+import { getMainWindow, getAiPanelBounds, isFullscreen, isModalOpen } from './window-manager';
 import { getSetting } from './settings-store';
 import { DEVICE_PROFILES } from '../shared/config';
 
@@ -70,7 +70,7 @@ export function closeAiPanel(): void {
 
 export function layoutAiPanel(): void {
   if (!aiView) return;
-  if (isModalOpen()) {
+  if (isModalOpen() || isFullscreen()) {
     aiView.setVisible(false);
     return;
   }

@@ -12,6 +12,8 @@ import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import {
   applyDeviceProfileToAllTabs,
+  applyDarkReaderToAllTabs,
+  applySiteThemesToAllTabs,
   approveCertificate,
   closeTab,
   createTab,
@@ -33,6 +35,7 @@ import {
   reorderTabs,
   reopenClosedTab,
   resetZoom,
+  restoreOriginalTab,
   setActiveTab,
   setMuted,
   setTabEventEmitter,
@@ -40,6 +43,7 @@ import {
   stopFind,
   stopTab,
   togglePin,
+  translateTab,
   zoomIn,
   zoomOut,
 } from '../tab-manager';
@@ -73,7 +77,7 @@ import {
   toggleBookmark,
 } from '../session-store';
 import { respondPermission, setPermissionEmitter } from '../permissions';
-import { createMainWindow, getAllWindows, getMainWindow, onRelayoutNeeded, setChromeSizes, setModalOpen } from '../window-manager';
+import { createMainWindow, getAllWindows, getMainWindow, isFullscreen, onFullscreenChanged, onRelayoutNeeded, setChromeSizes, setModalOpen, setWindowFullscreen } from '../window-manager';
 import { setDownloadAttacher } from '../tab-manager';
 import { setAiDownloadAttacher } from '../ai-panel-manager';
 import { attachDownloadHandler } from '../download-manager';
@@ -105,6 +109,9 @@ export function registerIpc(preloadPath: string): void {
     layoutTabViews();
     layoutAiPanel();
   });
+  onFullscreenChanged((fullscreen) => {
+    broadcast('browser:fullscreen-changed', fullscreen);
+  });
 
   ipcMain.handle('settings:get-all', () => getAllSettings());
   ipcMain.handle('settings:set', (_e, key: keyof AppSettings, value: AppSettings[typeof key]) => {
@@ -114,9 +121,12 @@ export function registerIpc(preloadPath: string): void {
     if (key === 'newTabWallpaper' && !['none', 'coastal-dusk', 'alpine-fog', 'desert-night', 'forest-canopy', 'arctic-glow', 'city-rain', 'lavender-dusk', 'fjord-morning', 'canyon-glow', 'aurora-mesh', 'ink-tide', 'nebula-drift'].includes(String(value))) {
       throw new Error('Invalid wallpaper');
     }
+    if (key === 'translateLanguage' && typeof value === 'string' && !/^[a-z]{2}(-[A-Z]{2})?$/.test(value)) {
+      throw new Error('Invalid language');
+    }
     setSetting(key, value as never);
     broadcast('settings:changed', getAllSettings());
-    if (key === 'theme' || key === 'appearance' || key === 'aiProviders' || key === 'newTabShowAI' || key === 'newTabWallpaper' || key === 'searchEngine') {
+    if (key === 'theme' || key === 'appearance' || key === 'aiProviders' || key === 'newTabShowAI' || key === 'newTabWallpaper' || key === 'searchEngine' || key === 'widgetCity' || key === 'widgetWeather' || key === 'widgetCrypto') {
       try {
         writeInternalPages();
         refreshNewTabPages();
@@ -124,6 +134,8 @@ export function registerIpc(preloadPath: string): void {
         /* ignore */
       }
     }
+    if (key === 'darkReader') applyDarkReaderToAllTabs();
+    if (key === 'youtubeTheme' || key === 'googleTheme') applySiteThemesToAllTabs();
     if (key === 'deviceProfile') applyDeviceProfileToAllTabs();
     if (key === 'aiPanelOpen') {
       if (value) {
@@ -172,6 +184,8 @@ export function registerIpc(preloadPath: string): void {
   ipcMain.handle('browser:zoom-out', (_e, id: string) => zoomOut(id));
   ipcMain.handle('browser:zoom-reset', (_e, id: string) => resetZoom(id));
   ipcMain.handle('browser:zoom-set', (_e, id: string, factor: number) => setZoom(id, Number(factor)));
+  ipcMain.handle('browser:translate', (_e, id: string, lang?: string) => translateTab(id, lang));
+  ipcMain.handle('browser:translate-restore', (_e, id: string) => restoreOriginalTab(id));
 
   ipcMain.handle('bookmarks:get', () => getBookmarks());
   ipcMain.handle('bookmarks:toggle', (_e, url: string, title: string, favicon: string) =>
@@ -246,6 +260,19 @@ export function registerIpc(preloadPath: string): void {
   });
   ipcMain.handle('browser:set-modal-open', (_e, open: boolean) => {
     setModalOpen(!!open);
+  });
+  ipcMain.handle('browser:get-fullscreen', () => isFullscreen());
+  ipcMain.handle('browser:set-window-fullscreen', (_e, fullscreen: boolean) => {
+    const win = getMainWindow();
+    if (!win || win.isDestroyed()) return isFullscreen();
+    const value = !!fullscreen;
+    setWindowFullscreen(value);
+    try {
+      if (win.isFullScreen() !== value) win.setFullScreen(value);
+    } catch {
+      /* ignore */
+    }
+    return isFullscreen();
   });
 
   ipcMain.handle('browser:clear-session', () => clearPrivacyData());
@@ -341,6 +368,7 @@ export function registerIpc(preloadPath: string): void {
 
   ipcMain.on('renderer:ready', () => {
     broadcast('settings:changed', getAllSettings());
+    broadcast('browser:fullscreen-changed', isFullscreen());
     if (getTabs().length === 0) createTab(undefined, true);
     else {
       const { tabs, activeId } = { tabs: getTabs(), activeId: getActiveTabId() };

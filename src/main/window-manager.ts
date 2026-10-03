@@ -12,6 +12,11 @@ let sideWidth = 0;
 let aiWidth = 0;
 let modalOpen = false;
 let onLayoutChange: (() => void) | null = null;
+/** A page (e.g. a YouTube video) is in HTML fullscreen. */
+let pageFullscreen = false;
+/** The user toggled window fullscreen (F11 / View menu). */
+let windowFullscreen = false;
+const fullscreenListeners = new Set<(fullscreen: boolean) => void>();
 
 export function setChromeSizes(sizes: {
   top: number;
@@ -43,6 +48,56 @@ export function isModalOpen(): boolean {
   return modalOpen;
 }
 
+export function isPageFullscreen(): boolean {
+  return pageFullscreen;
+}
+
+export function isWindowFullscreen(): boolean {
+  return windowFullscreen;
+}
+
+export function isFullscreen(): boolean {
+  return pageFullscreen || windowFullscreen;
+}
+
+export function onFullscreenChanged(cb: (fullscreen: boolean) => void): () => void {
+  fullscreenListeners.add(cb);
+  return () => {
+    fullscreenListeners.delete(cb);
+  };
+}
+
+function notifyFullscreen(): void {
+  const value = isFullscreen();
+  for (const cb of [...fullscreenListeners]) {
+    try {
+      cb(value);
+    } catch {
+      /* ignore */
+    }
+  }
+  relayout();
+}
+
+export function setPageFullscreen(fullscreen: boolean): void {
+  if (pageFullscreen === fullscreen) return;
+  pageFullscreen = fullscreen;
+  if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isFullScreen() !== fullscreen) {
+    try {
+      mainWindow.setFullScreen(fullscreen);
+    } catch {
+      /* ignore */
+    }
+  }
+  notifyFullscreen();
+}
+
+export function setWindowFullscreen(fullscreen: boolean): void {
+  if (windowFullscreen === fullscreen) return;
+  windowFullscreen = fullscreen;
+  notifyFullscreen();
+}
+
 export function getMainWindow(): BrowserWindow | null {
   return mainWindow;
 }
@@ -54,6 +109,7 @@ export function getAllWindows(): BrowserWindow[] {
 export function getContentBounds(): { x: number; y: number; width: number; height: number } {
   if (!mainWindow) return { x: 0, y: 0, width: 800, height: 600 };
   const b = mainWindow.getContentBounds();
+  if (isFullscreen()) return { x: 0, y: 0, width: b.width, height: b.height };
   const aiOpen = getSetting('aiPanelOpen');
   const panelW = aiOpen ? getSetting('aiPanelWidth') : 0;
   void aiWidth;
@@ -123,6 +179,14 @@ export function createMainWindow(preloadPath: string, source?: BrowserWindow): B
   allWindows.add(mainWindow);
   const created = mainWindow;
   created.on('resize', relayout);
+  created.on('enter-full-screen', () => {
+    if (!pageFullscreen) return;
+    relayout();
+  });
+  created.on('leave-full-screen', () => {
+    if (pageFullscreen) setPageFullscreen(false);
+    else if (windowFullscreen) setWindowFullscreen(false);
+  });
   created.on('closed', () => {
     allWindows.delete(created);
     if (getMainWindow() === created) mainWindow = null;

@@ -1,6 +1,6 @@
 import React from 'react';
 import { useSessionStore, useSettingsStore, useUIStore } from '../stores';
-import { DEVICE_PROFILES, SEARCH_ENGINES, isValidHttpUrl } from '../../shared/config';
+import { DEVICE_PROFILES, SEARCH_ENGINES, SEARCH_ENGINE_ORDER, PRIVACY_LABEL, TRANSLATE_LANGUAGES, isValidHttpUrl } from '../../shared/config';
 import type { AIProvider } from '../../shared/types';
 import { randomUUID } from '../uuid';
 import { Icon, type IconName } from './icons';
@@ -91,6 +91,18 @@ export function SettingsPage(): React.ReactElement {
                   <span className="row-label">AI shortcuts on New Tab<span className="row-hint">Quick pills for your providers</span></span>
                   <input type="checkbox" className="switch" role="switch" checked={settings.newTabShowAI} onChange={(e) => void set('newTabShowAI', e.target.checked)} aria-label="Show AI on new tab" />
                 </div>
+                <div className="row-line">
+                  <label className="row-label" htmlFor="widget-city">Weather city<span className="row-hint">Used by the home-screen weather card (Open-Meteo, no key, no tracking)</span></label>
+                  <input id="widget-city" type="text" placeholder="e.g. Cairo" value={settings.widgetCity} onChange={(e) => void set('widgetCity', e.target.value)} aria-label="Weather city" />
+                </div>
+                <div className="row-line">
+                  <span className="row-label">Weather card<span className="row-hint">Live conditions on the new-tab dashboard</span></span>
+                  <input type="checkbox" className="switch" role="switch" checked={settings.widgetWeather} onChange={(e) => void set('widgetWeather', e.target.checked)} aria-label="Show weather card" />
+                </div>
+                <div className="row-line">
+                  <span className="row-label">Crypto card<span className="row-hint">BTC, ETH and SOL prices with 24h change</span></span>
+                  <input type="checkbox" className="switch" role="switch" checked={settings.widgetCrypto} onChange={(e) => void set('widgetCrypto', e.target.checked)} aria-label="Show crypto card" />
+                </div>
               </section>
             )}
             {section === 'Theme' && (
@@ -110,6 +122,26 @@ export function SettingsPage(): React.ReactElement {
                   <select value={settings.appearance} onChange={(e) => void set('appearance', e.target.value as never)} aria-label="Appearance">
                     <option value="dark">Dark</option>
                     <option value="light">Light</option>
+                  </select>
+                </div>
+                <div className="row-line">
+                  <span className="row-label">Force dark mode on sites<span className="row-hint">Dark Reader-style invert filter applied to every web page</span></span>
+                  <input type="checkbox" className="switch" role="switch" checked={settings.darkReader} onChange={(e) => void set('darkReader', e.target.checked)} aria-label="Force dark mode on sites" />
+                </div>
+                <div className="row-line">
+                  <span className="row-label">Custom YouTube theme<span className="row-hint">Dark violet Null skin injected into YouTube pages</span></span>
+                  <input type="checkbox" className="switch" role="switch" checked={settings.youtubeTheme} onChange={(e) => void set('youtubeTheme', e.target.checked)} aria-label="Custom YouTube theme" />
+                </div>
+                <div className="row-line">
+                  <span className="row-label">Custom Google theme<span className="row-hint">Dark violet Null skin injected into Google search pages</span></span>
+                  <input type="checkbox" className="switch" role="switch" checked={settings.googleTheme} onChange={(e) => void set('googleTheme', e.target.checked)} aria-label="Custom Google theme" />
+                </div>
+                <div className="row-line">
+                  <span className="row-label">Translate language<span className="row-hint">Default target for the toolbar translate button</span></span>
+                  <select value={settings.translateLanguage} onChange={(e) => void set('translateLanguage', e.target.value)} aria-label="Translate language">
+                    {TRANSLATE_LANGUAGES.map((l) => (
+                      <option key={l.id} value={l.id}>{l.name}</option>
+                    ))}
                   </select>
                 </div>
                 <div className="wallpaper-setting">
@@ -150,15 +182,31 @@ export function SettingsPage(): React.ReactElement {
             {section === 'Search' && (
               <section>
                 <h2>Search</h2>
-                <p className="settings-desc">Used by the address bar and the new-tab search box.</p>
+                <p className="settings-desc">Used by the address bar and the new-tab search box. Ranked most private first.</p>
                 <div className="row-line">
                   <span className="row-label">Default search engine</span>
                   <select value={settings.searchEngine} onChange={(e) => void set('searchEngine', e.target.value as never)} aria-label="Search engine">
-                    {Object.values(SEARCH_ENGINES).map((e) => (
-                      <option key={e.id} value={e.id}>{e.name}</option>
-                    ))}
+                    {SEARCH_ENGINE_ORDER.map((id) => {
+                      const e = SEARCH_ENGINES[id];
+                      return (
+                        <option key={e.id} value={e.id}>{e.name} — {PRIVACY_LABEL[e.privacy]}</option>
+                      );
+                    })}
                   </select>
                 </div>
+                <div className="row-line">
+                  <span className="row-label">Privacy notice on Google / Bing<span className="row-hint">Warns that these engines profile you, even though Null forgets everything</span></span>
+                  <input type="checkbox" className="switch" role="switch" checked={settings.googlePrivacyBanner} onChange={(e) => void set('googlePrivacyBanner', e.target.checked)} aria-label="Privacy notice on Google and Bing" />
+                </div>
+                {SEARCH_ENGINE_ORDER.map((id) => {
+                  const e = SEARCH_ENGINES[id];
+                  return (
+                    <div className="row-line" key={e.id}>
+                      <span className="row-label">{e.name}<span className="row-hint">{PRIVACY_LABEL[e.privacy]} · {e.privacyNote}</span></span>
+                      {settings.searchEngine === e.id && <span className="kbd">Default</span>}
+                    </div>
+                  );
+                })}
               </section>
             )}
             {section === 'Privacy' && (
@@ -333,6 +381,7 @@ export function SettingsPage(): React.ReactElement {
                   ['Next / previous tab', 'Ctrl/⌘ + Tab'],
                   ['Find in page', 'Ctrl/⌘ + F'],
                   ['Command palette', 'Ctrl/⌘ + K'],
+                  ['Full screen', 'F11'],
                   ['Search tabs', 'Ctrl/⌘ + Shift + A'],
                   ['Bookmark this page', 'Ctrl/⌘ + D'],
                   ['History', 'Ctrl/⌘ + H'],

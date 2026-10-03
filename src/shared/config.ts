@@ -1,9 +1,27 @@
 import type { SearchEngine, SearchEngineId, AIProvider, DeviceProfile } from './types';
 
 export const SEARCH_ENGINES: Record<SearchEngineId, SearchEngine> = {
-  google: { id: 'google', name: 'Google', searchUrl: 'https://www.google.com/search?q=%s' },
-  bing: { id: 'bing', name: 'Bing', searchUrl: 'https://www.bing.com/search?q=%s' },
-  duckduckgo: { id: 'duckduckgo', name: 'DuckDuckGo', searchUrl: 'https://duckduckgo.com/?q=%s' },
+  brave: { id: 'brave', name: 'Brave', searchUrl: 'https://search.brave.com/search?q=%s', privacy: 'max', privacyNote: 'Independent index, no profiling' },
+  mojeek: { id: 'mojeek', name: 'Mojeek', searchUrl: 'https://www.mojeek.com/search?q=%s', privacy: 'max', privacyNote: 'Independent index, no tracking' },
+  duckduckgo: { id: 'duckduckgo', name: 'DuckDuckGo', searchUrl: 'https://duckduckgo.com/?q=%s', privacy: 'high', privacyNote: 'No tracking, Bing-based results' },
+  startpage: { id: 'startpage', name: 'Startpage', searchUrl: 'https://www.startpage.com/sp/search?query=%s', privacy: 'high', privacyNote: 'Anonymous Google results' },
+  qwant: { id: 'qwant', name: 'Qwant', searchUrl: 'https://www.qwant.com/?q=%s', privacy: 'high', privacyNote: 'EU-hosted, no profiling' },
+  ecosia: { id: 'ecosia', name: 'Ecosia', searchUrl: 'https://www.ecosia.org/search?q=%s', privacy: 'medium', privacyNote: 'Anonymized after 7 days' },
+  bing: { id: 'bing', name: 'Bing', searchUrl: 'https://www.bing.com/search?q=%s', privacy: 'low', privacyNote: 'Microsoft profiling' },
+  google: { id: 'google', name: 'Google', searchUrl: 'https://www.google.com/search?q=%s', privacy: 'low', privacyNote: 'Full ad profiling' },
+};
+
+const PRIVACY_RANK: Record<SearchEngine['privacy'], number> = { max: 0, high: 1, medium: 2, low: 3 };
+
+export const SEARCH_ENGINE_ORDER: SearchEngineId[] = (Object.keys(SEARCH_ENGINES) as SearchEngineId[]).sort(
+  (a, b) => PRIVACY_RANK[SEARCH_ENGINES[a].privacy] - PRIVACY_RANK[SEARCH_ENGINES[b].privacy] || SEARCH_ENGINES[a].name.localeCompare(SEARCH_ENGINES[b].name),
+);
+
+export const PRIVACY_LABEL: Record<SearchEngine['privacy'], string> = {
+  max: 'Maximum privacy',
+  high: 'High privacy',
+  medium: 'Balanced',
+  low: 'Low privacy',
 };
 
 export const BUILTIN_AI_PROVIDERS: AIProvider[] = [
@@ -121,3 +139,76 @@ export const NULL_NEWTAB_FILE_MARKER = 'NULL_NEWTAB_FILE';
 export const NULL_SETTINGS = 'null://settings';
 export const NULL_ERROR_PREFIX = 'null://error';
 export const GOOGLE_HOME = 'https://www.google.com/';
+
+export interface TranslateLanguage {
+  id: string;
+  name: string;
+}
+
+export const TRANSLATE_LANGUAGES: TranslateLanguage[] = [
+  { id: 'en', name: 'English' },
+  { id: 'ar', name: 'Arabic' },
+  { id: 'fr', name: 'French' },
+  { id: 'de', name: 'German' },
+  { id: 'es', name: 'Spanish' },
+  { id: 'it', name: 'Italian' },
+  { id: 'pt', name: 'Portuguese' },
+  { id: 'ru', name: 'Russian' },
+  { id: 'zh-CN', name: 'Chinese (Simplified)' },
+  { id: 'ja', name: 'Japanese' },
+  { id: 'ko', name: 'Korean' },
+  { id: 'hi', name: 'Hindi' },
+  { id: 'tr', name: 'Turkish' },
+  { id: 'nl', name: 'Dutch' },
+];
+
+export const CRYPTO_SYMBOLS = [
+  { symbol: 'BTCUSDT', label: 'BTC' },
+  { symbol: 'ETHUSDT', label: 'ETH' },
+  { symbol: 'SOLUSDT', label: 'SOL' },
+] as const;
+
+export function translateUrl(url: string, targetLang: string): string | null {
+  try {
+    const u = new URL(url);
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return null;
+    const raw = /^[a-z]{2}(-[A-Za-z]{2})?$/.test(targetLang) ? targetLang : 'en';
+    const host = u.hostname.replace(/\./g, '-');
+    if (!host) return null;
+    const params = new URLSearchParams(u.search);
+    params.set('_x_tr_sl', 'auto');
+    params.set('_x_tr_tl', raw);
+    params.set('_x_tr_hl', 'en');
+    params.set('_x_tr_pto', 'wapp');
+    const query = params.toString();
+    return `https://${host}.translate.goog${u.pathname}${query ? `?${query}` : ''}${u.hash}`;
+  } catch {
+    return null;
+  }
+}
+
+export function isTranslatedUrl(url: string): boolean {
+  return /\.translate\.goog(\/|$|\?|#)/i.test(url);
+}
+
+export function originalUrlFromTranslated(url: string): string | null {
+  try {
+    const u = new URL(url);
+    const parts = u.hostname.split('.');
+    const idx = parts.findIndex((p) => p === 'translate');
+    if (idx < 1) return null;
+    const maybeLang = parts[idx - 1] ?? '';
+    const hasLangSegment = idx >= 2 && /^[a-z]{2}(-[a-z]{2})?$/i.test(maybeLang);
+    const host = parts.slice(0, hasLangSegment ? idx - 1 : idx).join('.').replace(/-/g, '.');
+    if (!host) return null;
+    const params = new URLSearchParams(u.search);
+    params.delete('_x_tr_sl');
+    params.delete('_x_tr_tl');
+    params.delete('_x_tr_hl');
+    params.delete('_x_tr_pto');
+    const search = params.toString();
+    return `https://${host}${u.pathname}${search ? `?${search}` : ''}${u.hash}`;
+  } catch {
+    return null;
+  }
+}

@@ -76,6 +76,8 @@ interface UIState {
   historyOpen: boolean;
   paletteOpen: boolean;
   paletteMode: 'all' | 'tabs';
+  translateOpen: boolean;
+  fullscreen: boolean;
   insecureWarning: InsecureWarningInfo | null;
   certWarning: CertificateWarningInfo | null;
   sensitiveWarning: SensitiveWarningInfo | null;
@@ -99,6 +101,8 @@ export const useUIStore = create<UIState>((set) => ({
   historyOpen: false,
   paletteOpen: false,
   paletteMode: 'all',
+  translateOpen: false,
+  fullscreen: false,
   insecureWarning: null,
   certWarning: null,
   sensitiveWarning: null,

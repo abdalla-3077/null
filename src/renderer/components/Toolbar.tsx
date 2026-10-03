@@ -1,5 +1,6 @@
 import React from 'react';
 import { useTabStore, useSettingsStore, useDownloadStore, useUIStore } from '../stores';
+import { TRANSLATE_LANGUAGES } from '../../shared/config';
 import { Icon } from './icons';
 
 function NavButtons(): React.ReactElement {
@@ -57,6 +58,9 @@ function AiRail(): React.ReactElement {
 export function Toolbar({ addressRef }: { addressRef: React.RefObject<HTMLInputElement | null> }): React.ReactElement {
   void addressRef;
   const tabs = useTabStore((s) => s.tabs);
+  const activeId = useTabStore((s) => s.activeId);
+  const active = tabs.find((t) => t.id === activeId);
+  const fullscreen = useUIStore((s) => s.fullscreen);
   const downloads = useDownloadStore((s) => s.downloads);
   const dlOpen = useDownloadStore((s) => s.open);
   const setDl = useDownloadStore((s) => s.setOpen);
@@ -65,6 +69,9 @@ export function Toolbar({ addressRef }: { addressRef: React.RefObject<HTMLInputE
   const settings = useSettingsStore((s) => s.settings);
   const b = window.nullBrowser;
   const activeCount = downloads.filter((d) => d.state === 'progressing').length;
+  const translatable = !!active && /^https?:/i.test(active.url);
+  const translated = !!active?.translated;
+  const langName = TRANSLATE_LANGUAGES.find((l) => l.id === settings.translateLanguage)?.name ?? settings.translateLanguage;
   return (
     <div className="toolbar">
       <NavButtons />
@@ -73,6 +80,27 @@ export function Toolbar({ addressRef }: { addressRef: React.RefObject<HTMLInputE
       </button>
       <AiRail />
       <div style={{ flex: 1 }} />
+      {translated && (
+        <button
+          className="icon-btn active"
+          title={`Translated to ${langName} — click to show original`}
+          aria-label={`Translated to ${langName}, show original page`}
+          onClick={() => activeId && void b.translateRestore(activeId)}
+        >
+          <Icon name="translate" />
+        </button>
+      )}
+      {!translated && (
+        <button
+          className="icon-btn"
+          title="Translate this page"
+          aria-label="Translate this page"
+          disabled={!translatable}
+          onClick={() => setUI({ translateOpen: true })}
+        >
+          <Icon name="translate" />
+        </button>
+      )}
       <button
         className={`icon-btn${devToolsOpen ? ' active' : ''}`}
         title="Page inspector"
@@ -80,6 +108,14 @@ export function Toolbar({ addressRef }: { addressRef: React.RefObject<HTMLInputE
         onClick={() => setUI({ devToolsOpen: true })}
       >
         <Icon name="code" />
+      </button>
+      <button
+        className={`icon-btn${fullscreen ? ' active' : ''}`}
+        title={fullscreen ? 'Exit full screen (F11)' : 'Full screen (F11)'}
+        aria-label={fullscreen ? 'Exit full screen' : 'Enter full screen'}
+        onClick={() => void b.setWindowFullscreen(!fullscreen).catch(() => undefined)}
+      >
+        <Icon name="screen" />
       </button>
       <button
         className={`icon-btn dl-btn${dlOpen ? ' active' : ''}`}
