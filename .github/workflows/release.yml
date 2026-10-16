@@ -113,8 +113,12 @@ jobs:
           set -euo pipefail
           CUR_TAG="${GITHUB_REF_NAME}"
           # Manual dispatch has no tag — fall back to latest tag / package.json version
+          # (kept as flat statements: triple-nested "$(.. "$(.. "..")")" is a bash parse error)
           if [ -z "$CUR_TAG" ] || [ "$CUR_TAG" = "main" ] || [ "$CUR_TAG" = "master" ]; then
-            CUR_TAG="$(git describe --tags --abbrev=0 2>/dev/null || echo "v$(node -p "require('./package.json').version)")"
+            CUR_TAG="$(git describe --tags --abbrev=0 2>/dev/null || true)"
+            if [ -z "$CUR_TAG" ]; then
+              CUR_TAG="v$(node -p "require('./package.json').version")"
+            fi
           fi
           echo "Current tag: $CUR_TAG"
           PREV_TAG="$(git tag --sort=-v:refname | grep -x 'v.*' | grep -v -x "$CUR_TAG" | head -n 1 || true)"
@@ -122,22 +126,6 @@ jobs:
           RANGE="$CUR_TAG"
           if [ -n "${PREV_TAG:-}" ]; then RANGE="$PREV_TAG..$CUR_TAG"; fi
           echo "Range: $RANGE"
-
-          map_emoji() {
-            local msg="$1"
-            case "$msg" in
-              feat*|Feat*|FEATURE*)      echo "✨" ;;
-              fix*|Fix*|hotfix*|bug*)   echo "🐛" ;;
-              docs*|Docs*)              echo "📝" ;;
-              style*|ui*|design*|theme*) echo "💄" ;;
-              refactor*|Refactor*)       echo "♻️" ;;
-              perf*|Perf*|optim*)       echo "⚡" ;;
-              test*|Test*)              echo "✅" ;;
-              chore*|Chore*|build*|ci*) echo "🔧" ;;
-              sec*|Sec*|priv*|Priv*)    echo "🔒" ;;
-              revert*|Revert*)          echo "⏪" ;;
-              *)                        echo "📌" ;;
-            }
 
           {
             echo "## What's Changed"
