@@ -17,6 +17,7 @@ import { HistoryDialog } from './components/HistoryDialog';
 import { CommandPalette } from './components/CommandPalette';
 import { PermissionPrompt } from './components/PermissionPrompt';
 import { TranslateDialog } from './components/TranslateDialog';
+import { StudyMini, StudyPanel, StudyTicker, applySnapshot, useStudyStore } from './components/StudyTimer';
 import { BrandMark } from './components/BrandMark';
 import { EnginePrivacyBanner } from './components/EnginePrivacyBanner';
 import { useTabStore, useSettingsStore, useDownloadStore, useFindStore, useUIStore, useSessionStore } from './stores';
@@ -82,6 +83,7 @@ export function App(): React.ReactElement {
   const translateOpen = useUIStore((s) => s.translateOpen);
   const permission = useUIStore((s) => s.permission);
   const downloadsOpen = useDownloadStore((s) => s.open);
+  const studyOpen = useStudyStore((s) => s.panelOpen);
   const topRef = React.useRef<HTMLDivElement>(null);
   const bottomRef = React.useRef<HTMLDivElement>(null);
   const sideRef = React.useRef<HTMLDivElement>(null);
@@ -103,6 +105,7 @@ export function App(): React.ReactElement {
       historyOpen ||
       paletteOpen ||
       translateOpen ||
+      studyOpen ||
       !!permission ||
       !!insecureWarning ||
       !!certWarning ||
@@ -110,7 +113,7 @@ export function App(): React.ReactElement {
       downloadsOpen ||
       !settings.setupDone;
     void window.nullBrowser.setModalOpen(modalOpen).catch(() => undefined);
-  }, [settingsOpen, emergencyOpen, devToolsOpen, historyOpen, paletteOpen, translateOpen, permission, insecureWarning, certWarning, sensitiveWarning, downloadsOpen, settings.setupDone]);
+  }, [settingsOpen, emergencyOpen, devToolsOpen, historyOpen, paletteOpen, translateOpen, studyOpen, permission, insecureWarning, certWarning, sensitiveWarning, downloadsOpen, settings.setupDone]);
 
   React.useEffect(() => {
     let offTabs: () => void = () => undefined;
@@ -126,6 +129,7 @@ export function App(): React.ReactElement {
     let offBookmarks: () => void = () => undefined;
     let offHistory: () => void = () => undefined;
     let offPermission: () => void = () => undefined;
+    let offStudyChanged: () => void = () => undefined;
     const b = window.nullBrowser;
     void window.nullSettings.getAll().then((s) => {
       useSettingsStore.getState().setSettings(s);
@@ -148,6 +152,13 @@ export function App(): React.ReactElement {
     offBookmarks = b.onBookmarksChanged((list) => useSessionStore.getState().setBookmarks(list));
     offHistory = b.onHistoryChanged((list) => useSessionStore.getState().setHistory(list));
     offPermission = b.onPermissionRequest((r) => useUIStore.getState().set({ permission: r }));
+    try {
+      offStudyChanged = window.nullBrowser.onStudyChanged((snap) => {
+        if (snap) applySnapshot(snap);
+      });
+    } catch {
+      /* older preload */
+    }
     b.rendererReady();
     void b.getFullscreen().then((value) => useUIStore.getState().set({ fullscreen: !!value })).catch(() => undefined);
     void b.getTabs().then(({ tabs, activeId }) => useTabStore.getState().setTabs(tabs, activeId));
@@ -217,6 +228,11 @@ export function App(): React.ReactElement {
         } else if (ui.ctxMenu) ui.set({ ctxMenu: null });
         else if (ui.paletteOpen) ui.set({ paletteOpen: false });
         else if (ui.translateOpen) ui.set({ translateOpen: false });
+        else if (useStudyStore.getState().panelOpen) {
+          const st = useStudyStore.getState();
+          const live = st.status === 'running' || st.status === 'paused';
+          st.set({ panelOpen: false, miniOpen: live ? true : st.miniOpen });
+        }
         else if (ui.permission) {
           void b.respondPermission(ui.permission.id, false);
           ui.set({ permission: null });
@@ -263,6 +279,7 @@ export function App(): React.ReactElement {
       offBookmarks();
       offHistory();
       offPermission();
+      offStudyChanged();
       window.removeEventListener('keydown', onKey);
     };
   }, []);
@@ -398,6 +415,9 @@ export function App(): React.ReactElement {
       {paletteOpen && <CommandPalette />}
       <TranslateDialog />
       {permission && <PermissionPrompt />}
+      <StudyPanel />
+      <StudyMini />
+      <StudyTicker />
       <DownloadTray />
       <ContextMenuHost />
     </div>

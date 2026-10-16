@@ -11,6 +11,8 @@ import { registerNullProtocol, writeInternalPages } from './main/null-protocol';
 import { registerIpc, setPreloadPath } from './main/ipc';
 import { cleanupOnQuit } from './main/privacy-manager';
 import { handleCertificateError } from './main/tab-manager';
+import { shutdownDiscordRpc, syncDiscordPresence } from './main/discord-rpc';
+import { getAllSettings } from './main/settings-store';
 
 app.on('certificate-error', (event, webContents, url, error, certificate, callback, isMainFrame) => {
   handleCertificateError(event, webContents, url, error, certificate, callback, isMainFrame);
@@ -31,6 +33,13 @@ function boot(): void {
   }
   registerNullProtocol();
   registerIpc(PRELOAD_PATH);
+  // Restore Discord presence after restart if the user left it enabled.
+  try {
+    const s = getAllSettings();
+    if (s.discordRpcEnabled) syncDiscordPresence([], null);
+  } catch {
+    /* ignore */
+  }
   const win = createMainWindow(PRELOAD_PATH);
 
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
@@ -94,6 +103,11 @@ app.on('ready', boot);
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
+    try {
+      shutdownDiscordRpc();
+    } catch {
+      /* ignore */
+    }
     void cleanupOnQuit().finally(() => app.exit(0));
   }
 });

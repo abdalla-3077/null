@@ -455,6 +455,54 @@ export function registerNullProtocol(): void {
           return new Response('New tab', { status: 200 });
         }
       }
+      if (host === 'study') {
+        // Full-page Study timer. The timer engine lives in the main process,
+        // so this page stays in sync with the toolbar chip, panel and popup.
+        try {
+          const { getStudySnapshot } = await import('./study-manager');
+          const { studyHtml } = await import('./study-page');
+          const base = palette(theme, appearance);
+          const extra =
+            appearance === 'light'
+              ? { success: '#1f9d63', warning: '#b25e09', danger: '#d13438' }
+              : { success: '#46c880', warning: '#f5a524', danger: '#e5484d' };
+          return new Response(studyHtml({ ...base, ...extra }, appearance, getStudySnapshot()), {
+            headers: { 'content-type': 'text/html' },
+          });
+        } catch {
+          return new Response('Study', { status: 200 });
+        }
+      }
+      if (host === 'study-state') {
+        // Live snapshot polled by the null://study page.
+        try {
+          const { getStudySnapshot } = await import('./study-manager');
+          return new Response(JSON.stringify(getStudySnapshot()), {
+            headers: { 'content-type': 'application/json', 'access-control-allow-origin': '*' },
+          });
+        } catch {
+          return new Response('{}', { status: 500 });
+        }
+      }
+      if (host === 'study-cmd') {
+        // Timer commands from the null://study page (tabs have no IPC bridge).
+        try {
+          const { studyCommand } = await import('./study-manager');
+          const params: Record<string, string | number> = {};
+          u.searchParams.forEach((value, key) => {
+            if (key === 'action') return;
+            const n = Number(value);
+            params[key] = value !== '' && Number.isFinite(n) ? n : value;
+          });
+          const action = (u.searchParams.get('action') ?? '') as Parameters<typeof studyCommand>[0];
+          const snap = studyCommand(action, params);
+          return new Response(JSON.stringify(snap), {
+            headers: { 'content-type': 'application/json', 'access-control-allow-origin': '*' },
+          });
+        } catch {
+          return new Response('{}', { status: 400 });
+        }
+      }
       return net.fetch(request);
     });
   } catch {

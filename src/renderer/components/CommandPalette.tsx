@@ -1,6 +1,7 @@
 import React from 'react';
 import { useDownloadStore, useFindStore, useSessionStore, useTabStore, useUIStore } from '../stores';
 import { Icon, type IconName } from './icons';
+import { useStudyStore } from './StudyTimer';
 
 interface PaletteItem {
   id: string;
@@ -66,6 +67,7 @@ export function CommandPalette(): React.ReactElement | null {
       { id: 'translate', label: 'Translate this page', hint: '', icon: 'translate', group: 'Actions', run: () => { if (activeId) void b.translate(activeId); } },
       { id: 'translate-restore', label: 'Show original page', hint: '', icon: 'translate', group: 'Actions', run: () => { if (activeId) void b.translateRestore(activeId); } },
       { id: 'inspector', label: 'Open page inspector', hint: '', icon: 'code', group: 'Actions', run: () => set({ devToolsOpen: true }) },
+      { id: 'study', label: 'Open Study Mode timer', hint: 'null://study', icon: 'timer', group: 'Actions', run: () => useStudyStore.getState().set({ panelOpen: true }) },
       { id: 'zoom-in', label: 'Zoom in', hint: 'Ctrl++', icon: 'zoomIn', group: 'View', run: () => { if (activeId) void b.zoomIn(activeId); } },
       { id: 'zoom-out', label: 'Zoom out', hint: 'Ctrl+-', icon: 'zoomOut', group: 'View', run: () => { if (activeId) void b.zoomOut(activeId); } },
       { id: 'zoom-reset', label: 'Reset zoom', hint: 'Ctrl+0', icon: 'search', group: 'View', run: () => { if (activeId) void b.resetZoom(activeId); } },

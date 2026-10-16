@@ -2,6 +2,7 @@ import React from 'react';
 import { useTabStore, useSettingsStore, useDownloadStore, useUIStore } from '../stores';
 import { TRANSLATE_LANGUAGES } from '../../shared/config';
 import { Icon } from './icons';
+import { StudyChip } from './StudyTimer';
 
 function NavButtons(): React.ReactElement {
   const tabs = useTabStore((s) => s.tabs);
@@ -109,6 +110,7 @@ export function Toolbar({ addressRef }: { addressRef: React.RefObject<HTMLInputE
       >
         <Icon name="code" />
       </button>
+      <StudyChip />
       <button
         className={`icon-btn${fullscreen ? ' active' : ''}`}
         title={fullscreen ? 'Exit full screen (F11)' : 'Full screen (F11)'}

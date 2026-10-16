@@ -14,6 +14,7 @@ export type DeviceProfileId =
   | 'android-phone'
   | 'android-tablet';
 export type EmergencyDestination = 'google' | 'blank' | 'custom';
+export type DiscordPresenceMode = 'generic' | 'host' | 'title';
 
 export interface TabInfo {
   id: string;
@@ -250,6 +251,10 @@ export interface AppSettings {
   trustedSensitiveHosts: string[];
   googlePrivacyBanner: boolean;
   devMode: boolean;
+  discordRpcEnabled: boolean;
+  discordPresenceMode: DiscordPresenceMode;
+  discordShowTimestamp: boolean;
+  discordHideSensitive: boolean;
 }
 
 export const DEFAULT_AI_PROVIDERS: AIProvider[] = [
@@ -296,4 +301,52 @@ export const DEFAULT_SETTINGS: AppSettings = {
   trustedSensitiveHosts: [],
   googlePrivacyBanner: true,
   devMode: false,
+  discordRpcEnabled: false,
+  discordPresenceMode: 'host',
+  discordShowTimestamp: true,
+  discordHideSensitive: true,
 };
+
+export type StudyMode = 'focus' | 'pomodoro' | 'interval' | 'countdown' | 'exam' | 'stopwatch';
+export type StudyStatus = 'idle' | 'running' | 'paused' | 'finished';
+export type StudyFace = 'ring' | 'minimal' | 'flip' | 'bars' | 'analog' | 'neon' | 'dots';
+export type StudyHue = 'auto' | 'cobalt' | 'ember' | 'violet' | 'mint' | 'amber' | 'rose';
+export type PomodoroPhase = 'focus' | 'short' | 'long';
+export type IntervalPhase = 'work' | 'rest';
+
+export interface StudyHistoryEntry {
+  at: number;
+  mode: string;
+  ms: number;
+  label: string;
+}
+
+/** Canonical timer state owned by the main process and mirrored everywhere. */
+export interface StudySnapshot {
+  mode: StudyMode;
+  status: StudyStatus;
+  face: StudyFace;
+  hue: StudyHue;
+  label: string;
+  totalMs: number;
+  endsAt: number | null;
+  pausedMs: number;
+  swAccumMs: number;
+  swStartedAt: number | null;
+  focusMs: number;
+  shortMs: number;
+  longMs: number;
+  rounds: number;
+  round: number;
+  phase: PomodoroPhase;
+  workMs: number;
+  restMs: number;
+  iRounds: number;
+  iRound: number;
+  iPhase: IntervalPhase;
+  examTargetAt: number | null;
+  examDone: boolean;
+  sessions: number;
+  history: StudyHistoryEntry[];
+  soundOn: boolean;
+}

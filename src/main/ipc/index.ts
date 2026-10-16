@@ -82,10 +82,12 @@ import { setDownloadAttacher } from '../tab-manager';
 import { setAiDownloadAttacher } from '../ai-panel-manager';
 import { attachDownloadHandler } from '../download-manager';
 import { getAllSettings, getSetting, setSetting } from '../settings-store';
+import { getStudySnapshot, setStudyEmitter, startStudyLoop, studyCommand, type StudyAction } from '../study-manager';
 import { writeInternalPages } from '../null-protocol';
 import { fetchSiteImage, fetchSiteResource, inspectTab, setTabDevToolsOpen } from '../site-inspector';
 import { DEVICE_PROFILES, isValidHttpUrl } from '../../shared/config';
-import type { AppSettings, SiteResourceKind } from '../../shared/types';
+import type { AppSettings, SiteResourceKind, TabInfo } from '../../shared/types';
+import { syncDiscordPresence, shutdownDiscordRpc } from '../discord-rpc';
 
 function senderWindow(event: Electron.IpcMainInvokeEvent): BrowserWindow | null {
   return BrowserWindow.fromWebContents(event.sender);
@@ -94,6 +96,16 @@ function senderWindow(event: Electron.IpcMainInvokeEvent): BrowserWindow | null 
 function broadcast(channel: string, ...args: unknown[]): void {
   for (const win of getAllWindows()) {
     if (!win.isDestroyed()) win.webContents.send(channel, ...args);
+  }
+  // Keep Discord Rich Presence in sync without ever blocking the UI.
+  try {
+    if (channel === 'tabs:changed') {
+      syncDiscordPresence((args[0] as TabInfo[]) ?? [], (args[1] as string | null) ?? null);
+    } else if (channel === 'settings:changed') {
+      syncDiscordPresence(getTabs(), getActiveTabId());
+    }
+  } catch {
+    /* presence must never break browsing */
   }
 }
 
@@ -105,6 +117,8 @@ export function registerIpc(preloadPath: string): void {
   setDownloadEmitter(broadcast);
   setSessionEmitter(broadcast);
   setPermissionEmitter(broadcast);
+  setStudyEmitter(broadcast);
+  startStudyLoop();
   onRelayoutNeeded(() => {
     layoutTabViews();
     layoutAiPanel();
@@ -114,6 +128,10 @@ export function registerIpc(preloadPath: string): void {
   });
 
   ipcMain.handle('settings:get-all', () => getAllSettings());
+  ipcMain.handle('study:get', () => getStudySnapshot());
+  ipcMain.handle('study:command', (_e, action: StudyAction, args?: Record<string, string | number>) =>
+    studyCommand(action, args ?? {}),
+  );
   ipcMain.handle('settings:set', (_e, key: keyof AppSettings, value: AppSettings[typeof key]) => {
     if (key === 'emergencyCustomUrl' && typeof value === 'string' && value.trim() !== '') {
       if (!isValidHttpUrl(value.trim())) throw new Error('Invalid URL');
@@ -123,6 +141,9 @@ export function registerIpc(preloadPath: string): void {
     }
     if (key === 'translateLanguage' && typeof value === 'string' && !/^[a-z]{2}(-[A-Z]{2})?$/.test(value)) {
       throw new Error('Invalid language');
+    }
+    if (key === 'discordPresenceMode' && !['generic', 'host', 'title'].includes(String(value))) {
+      throw new Error('Invalid presence mode');
     }
     setSetting(key, value as never);
     broadcast('settings:changed', getAllSettings());
@@ -414,6 +435,11 @@ export function registerIpc(preloadPath: string): void {
 
   app.on('before-quit', (e) => {
     e.preventDefault();
+    try {
+      shutdownDiscordRpc();
+    } catch {
+      /* ignore */
+    }
     void clearPrivacyData().finally(() => {
       app.exit(0);
     });

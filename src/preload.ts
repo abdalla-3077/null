@@ -12,6 +12,7 @@ import type {
   SiteImageResult,
   SiteResourceKind,
   SiteResourceResult,
+  StudySnapshot,
   TabDevInfo,
   TabInfo,
 } from './shared/types';
@@ -212,6 +213,11 @@ const browser = {
     ipcRenderer.on('browser:emergency-done', fn);
     return () => ipcRenderer.removeListener('browser:emergency-done', fn);
   },
+  onStudyChanged: (cb: (s: StudySnapshot) => void): (() => void) => {
+    const fn = (_e: unknown, s: StudySnapshot) => cb(s);
+    ipcRenderer.on('study:changed', fn as never);
+    return () => ipcRenderer.removeListener('study:changed', fn as never);
+  },
 };
 
 const settings = {
@@ -220,8 +226,16 @@ const settings = {
     ipcRenderer.invoke('settings:set', key, value),
 };
 
+const study = {
+  get: (): Promise<StudySnapshot> => ipcRenderer.invoke('study:get'),
+  command: (action: string, args?: Record<string, string | number>): Promise<StudySnapshot> =>
+    ipcRenderer.invoke('study:command', action, args ?? {}),
+};
+
 export type NullBrowserApi = typeof browser;
 export type NullSettingsApi = typeof settings;
+export type NullStudyApi = typeof study;
 
 contextBridge.exposeInMainWorld('nullBrowser', browser);
 contextBridge.exposeInMainWorld('nullSettings', settings);
+contextBridge.exposeInMainWorld('nullStudy', study);

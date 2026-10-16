@@ -29,6 +29,7 @@ const SECTIONS: { id: string; icon: IconName; description: string }[] = [
   { id: 'Privacy', icon: 'lock', description: 'Manage your temporary session and emergency options.' },
   { id: 'Device', icon: 'external', description: 'Choose the device identity websites see.' },
   { id: 'AI', icon: 'plus', description: 'Manage AI services and shortcuts.' },
+  { id: 'Discord', icon: 'discord', description: 'Optional Rich Presence on Discord.' },
   { id: 'Tabs', icon: 'globe', description: 'Set tab placement and behavior.' },
   { id: 'Downloads', icon: 'download', description: 'Choose where files are saved.' },
   { id: 'Keyboard', icon: 'settings', description: 'Browse shortcuts and developer options.' },
@@ -325,6 +326,7 @@ export function SettingsPage(): React.ReactElement {
               </section>
             )}
             {section === 'AI' && <AiSection />}
+            {section === 'Discord' && <DiscordSection />}
             {section === 'Tabs' && (
               <section>
                 <h2>Tabs</h2>
@@ -434,6 +436,44 @@ export function SettingsPage(): React.ReactElement {
       </div>
     )}
     </>
+  );
+}
+
+function DiscordSection(): React.ReactElement {
+  const settings = useSettingsStore((s) => s.settings);
+  const set = window.nullSettings.set;
+
+  return (
+    <section>
+      <h2>Discord Rich Presence</h2>
+      <p className="settings-desc">
+        Optional. Shows what you are browsing as your Discord status via local IPC
+        (SET_ACTIVITY). Off by default. Requires the Discord desktop app running.
+      </p>
+      <div className="row-line">
+        <span className="row-label">Show Discord status<span className="row-hint">Big image is the site's HD icon, small badge is the Null icon</span></span>
+        <input type="checkbox" className="switch" role="switch" checked={settings.discordRpcEnabled} onChange={(e) => void set('discordRpcEnabled', e.target.checked)} aria-label="Enable Discord Rich Presence" />
+      </div>
+      <div className="row-line">
+        <span className="row-label">What to show<span className="row-hint">You control how much the active tab reveals</span></span>
+        <select value={settings.discordPresenceMode} onChange={(e) => void set('discordPresenceMode', e.target.value as never)} aria-label="What to show on Discord">
+          <option value="generic">Just “Browsing the web”</option>
+          <option value="host">Site host (e.g. youtube.com)</option>
+          <option value="title">Page title + host</option>
+        </select>
+      </div>
+      <div className="row-line">
+        <span className="row-label">Show elapsed time<span className="row-hint">“00:12 elapsed” counter from when presence started</span></span>
+        <input type="checkbox" className="switch" role="switch" checked={settings.discordShowTimestamp} onChange={(e) => void set('discordShowTimestamp', e.target.checked)} aria-label="Show elapsed time on Discord" />
+      </div>
+      <div className="row-line">
+        <span className="row-label">Hide sensitive sites<span className="row-hint">Porn, gambling and alcohol sites always fall back to generic text</span></span>
+        <input type="checkbox" className="switch" role="switch" checked={settings.discordHideSensitive} onChange={(e) => void set('discordHideSensitive', e.target.checked)} aria-label="Hide sensitive sites from Discord" />
+      </div>
+      <p className="settings-desc">
+        Internal pages (new tab, settings, errors) never reveal URLs. Turning this off clears your status immediately.
+      </p>
+    </section>
   );
 }
 
