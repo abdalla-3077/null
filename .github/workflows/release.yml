@@ -195,40 +195,55 @@ jobs:
             dist-installers/**/*.deb
             dist-installers/**/*.rpm
 
-      - name: 📚 Prepend entry to CHANGELOG.md
+      - name: 📚 Update CHANGELOG.md on main
         shell: bash
         run: |
           set -euo pipefail
+          # Commit as the tag pusher (not github-actions[bot]) so the
+          # contributors graph stays single-author.
+          git config user.name "${{ github.actor }}"
+          git config user.email "${{ github.actor }}@users.noreply.github.com"
           TAG="${{ github.ref_name }}"
           DATE="$(date -u +%Y-%m-%d)"
-          NOTES="$(cat RELEASE_NOTES.md)"
-          if [ ! -f CHANGELOG.md ]; then
-            printf '# 📜 Changelog\n\nAll notable changes to Null. Releases are cut from version tags (see AGENTS.md).\n\n' > CHANGELOG.md
-          fi
-          {
-            echo "## $TAG — $DATE"
-            echo ""
-            echo "$NOTES"
-            echo ""
-            if head -n 1 CHANGELOG.md | grep -q '^# 📜 Changelog'; then
-              tail -n +4 CHANGELOG.md
-            else
-              cat CHANGELOG.md
+          for attempt in 1 2 3; do
+            git fetch origin main
+            BASE="$(git show origin/main:CHANGELOG.md 2>/dev/null || true)"
+            if [ -n "$BASE" ] && printf '%s' "$BASE" | grep -qF "## $TAG "; then
+              echo "CHANGELOG on main already contains $TAG — nothing to do."
+              exit 0
             fi
-          } > CHANGELOG.md.new
-          mv CHANGELOG.md.new CHANGELOG.md
-          head -n 30 CHANGELOG.md
-
-      - name: 💾 Commit updated CHANGELOG.md
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add CHANGELOG.md
-          if git diff --cached --quiet; then
-            echo "No CHANGELOG changes to commit."
-            exit 0
-          fi
-          git commit -m "📝 docs: update CHANGELOG for ${{ github.ref_name }} [skip ci]"
-          git push origin HEAD:main
+            if [ -n "$BASE" ] && [ "$(printf '%s' "$BASE" | head -n 1)" = "# 📜 Changelog" ]; then
+              REST="$(printf '%s\n' "$BASE" | tail -n +4)"
+            elif [ -n "$BASE" ]; then
+              REST="$BASE"
+            else
+              REST=""
+            fi
+            {
+              echo "# 📜 Changelog"
+              echo ""
+              echo "All notable changes to Null. Releases are cut from version tags (see AGENTS.md)."
+              echo ""
+              echo "## $TAG — $DATE"
+              echo ""
+              cat RELEASE_NOTES.md
+              echo ""
+              if [ -n "$REST" ]; then printf '%s\n' "$REST"; fi
+            } > CHANGELOG.md
+            # Parent the commit on origin/main (not the tag) so the push is fast-forward.
+            git reset --soft origin/main
+            git add CHANGELOG.md
+            if git diff --cached --quiet; then
+              echo "No CHANGELOG changes to commit."
+              exit 0
+            fi
+            git commit -m "📝 docs: update CHANGELOG for $TAG [skip ci]"
+            if git push origin HEAD:main; then
+              echo "✅ CHANGELOG pushed to main."
+              exit 0
+            fi
+            echo "⚠️ Push lost a race with another main update — retrying ($attempt/3)…"
+            sleep 5
+          done
+          echo "❌ Could not push CHANGELOG.md to main after 3 attempts." >&2
+          exit 1

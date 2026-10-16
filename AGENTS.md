@@ -59,7 +59,9 @@ Workflow: `.github/workflows/release.yml` + notes config `.github/release.yml`.
   3. 🎉 Creates/updates the GitHub Release `Null <tag>` with installers attached
      (`.exe/.nupkg`, `.zip/.dmg`, `.deb/.rpm`) + `generate_release_notes: true`
      (GitHub-native notes styled by `.github/release.yml` are appended).
-  4. 📚 Prepends the same notes to `CHANGELOG.md` and pushes to `main` (`[skip ci]`).
+  4. 📚 Rebuilds `CHANGELOG.md` on top of latest `origin/main` (retry ×3 on push races),
+     commits it **as the tag pusher** (never `github-actions[bot]` — contributors graph stays single-author),
+     and pushes to `main` (`[skip ci]`).
 - **How to cut a release:**
   ```bash
   npm version patch   # or minor / major / prerelease --preid=beta
