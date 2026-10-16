@@ -126,6 +126,12 @@ jobs:
           RANGE="$CUR_TAG"
           if [ -n "${PREV_TAG:-}" ]; then RANGE="$PREV_TAG..$CUR_TAG"; fi
           echo "Range: $RANGE"
+          # Map the top human author to the repo owner login so mentions render:
+          # git %an is a display name ("Abdalla Ahmed"), not a GitHub @handle.
+          OWNER="$(git config --get remote.origin.url 2>/dev/null | sed -E 's#.*github\.com[:/]([^/]+)/.*#\1#')"
+          TOP_AUTHOR="$(git log "$RANGE" --pretty='%an' 2>/dev/null | sort | uniq -c | sort -rn | head -n 1 | sed -E 's/^ +[0-9]+ //')"
+          ESCAPED_AUTHOR="$(printf '%s' "$TOP_AUTHOR" | sed 's/[][\.*^$/]/\\&/g')"
+          echo "Mention mapping: @${TOP_AUTHOR:-<none>} -> @${OWNER:-<none>}"
 
           {
             echo "## What's Changed"
@@ -155,7 +161,11 @@ jobs:
               fi
               if [ -n "$commits" ]; then
                 echo "### $title"
-                echo "$commits"
+                if [ -n "${OWNER:-}" ] && [ -n "${TOP_AUTHOR:-}" ] && [ "$TOP_AUTHOR" != "$OWNER" ]; then
+                  printf '%s\n' "$commits" | sed "s/@${ESCAPED_AUTHOR}/@${OWNER}/g"
+                else
+                  echo "$commits"
+                fi
                 echo ""
               fi
             done
