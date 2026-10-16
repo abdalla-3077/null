@@ -1,0 +1,64 @@
+# ✨ Null — Release Notes Configuration
+# GitHub-native auto-generated release notes.
+# Used automatically when the release workflow creates a release with `generate_release_notes: true`.
+# Docs: https://docs.github.com/en/repositories/releasing-projects-on-github/automatically-generated-release-notes
+
+changelog:
+  exclude:
+    labels:
+      - ignore-for-release
+      - skip-changelog
+    authors:
+      - dependabot
+      - renovate-bot
+
+  categories:
+    - title: '✨ Features'
+      labels:
+        - feat
+        - feature
+        - enhancement
+
+    - title: '🚀 Improvements'
+      labels:
+        - improvement
+        - perf
+        - performance
+        - refactor
+        - optimization
+
+    - title: '🐛 Bug Fixes'
+      labels:
+        - fix
+        - bug
+        - bugfix
+        - hotfix
+
+    - title: '🔒 Security & Privacy'
+      labels:
+        - security
+        - privacy
+
+    - title: '📝 Documentation'
+      labels:
+        - docs
+        - documentation
+
+    - title: '🧪 Tests & CI'
+      labels:
+        - test
+        - tests
+        - ci
+        - chore
+        - build
+
+    - title: '💄 UI & Style'
+      labels:
+        - style
+        - ui
+        - design
+        - theme
+
+    - title: '📌 Other Changes'
+      labels:
+        - '*'
